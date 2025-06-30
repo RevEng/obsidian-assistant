@@ -6,11 +6,14 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
 
 - Side-panel that provides chat with an LLM
 - Support for multiple LLM services (currently just Ollama)
+- Vector search of chunks using embedding models from Ollama
 - Configuration options:
   - LLM service selection (currently just Ollama)
   - LLM model selection
   - LLM service URL
   - LLM system prompt (optional; default is to use the API's default system prompt)
+  - Vector search settings (embedding model, toggle on/off)
+  - Document chunking settings (chunk size, overlap)
 - Responsive design that works well on desktop and mobile
 
 ## Requirements
@@ -49,13 +52,37 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
    - LLM model (e.g., llama3)
    - LLM service URL (e.g., http://localhost:11434 for Ollama)
    - Optional system prompt
+   - Vector search settings:
+     - Enable/disable vector search
+     - Embedding model (e.g., nomic-embed-text)
+   - Document chunking settings:
+     - Chunk size (default: 1000 characters)
+     - Chunk overlap (default: 200 characters)
+   - Index management:
+     - Reindex All Documents: Button to manually trigger reindexing of all documents, clearing the index of any existing documents
 
 ### Using the Chat
 
 1. Click the chat icon in the ribbon or use the command "Open Assistant Chat"
 2. A side panel will open with the chat interface
-3. Type your question about your current note and press Enter or click Send
-4. The assistant will use the contents of your current note to provide an intelligent response
+3. Type your question about your vault and press Enter or click Send
+4. The assistant will search your vault for relevant information:
+   - If vector search is enabled, it will use hybrid search (combining semantic similarity and keyword-based search) to find relevant content
+   - If vector search is disabled, it will use keyword-based search only
+5. The assistant will use the search results and/or your current note to provide an intelligent response
+
+### Hybrid Search
+
+When vector search is enabled, the plugin uses a hybrid search approach:
+
+1. Each document chunk is converted to a vector embedding using the specified embedding model
+2. When you ask a question, your query is also converted to a vector embedding
+3. The system performs both:
+   - Vector search: Finding semantically similar chunks by calculating cosine similarity
+   - Keyword search: Finding chunks that contain keywords from your query
+4. The results from both search methods are combined, with duplicates removed and the best scores preserved
+5. This hybrid approach provides more comprehensive results by leveraging both semantic similarity and keyword matching
+6. This allows the assistant to find relevant content even when it doesn't contain the exact keywords from your query, while still maintaining the precision of keyword-based search
 
 ## Development
 

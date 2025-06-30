@@ -21,6 +21,8 @@ interface ObsidianAssistantSettings {
   useVaultSearch: boolean;
   chunkSize: number;
   chunkOverlap: number;
+  useVectorSearch: boolean;
+  embeddingModel: string;
 }
 
 // Default settings
@@ -34,6 +36,8 @@ const DEFAULT_SETTINGS: ObsidianAssistantSettings = {
   useVaultSearch: true,
   chunkSize: 1000,
   chunkOverlap: 200,
+  useVectorSearch: false,
+  embeddingModel: 'nomic-embed-text',
 };
 
 // View type for the chat panel
@@ -267,10 +271,11 @@ class ChatView extends ItemView {
   // Search vault for context using Orama
   private async searchVaultForContext(query: string): Promise<string> {
     try {
-      // Get search options from checkboxes
+      // Get search options from checkboxes and plugin settings
       const searchOptions: SearchOptions = {
         useCurrentNote: this.useCurrentNoteCheckbox.checked,
         useVaultSearch: this.useVaultSearchCheckbox.checked,
+        useVectorSearch: this.plugin.settings.useVectorSearch,
       };
 
       // If neither option is enabled, return a message
@@ -301,11 +306,19 @@ export default class ObsidianAssistant extends Plugin {
   async onload() {
     await this.loadSettings();
 
-    // Initialize search service with chunking options
-    this.searchService = new SearchService(this.app, {
-      chunkSize: this.settings.chunkSize,
-      chunkOverlap: this.settings.chunkOverlap,
-    });
+    // Initialize search service with chunking options and embedding configuration
+    this.searchService = new SearchService(
+      this.app,
+      {
+        chunkSize: this.settings.chunkSize,
+        chunkOverlap: this.settings.chunkOverlap,
+      },
+      {
+        serviceUrl: this.settings.llmServiceUrl,
+        model: this.settings.embeddingModel,
+      },
+      this.settings.useVectorSearch
+    );
 
     // Wait for layout to be ready before initializing the search index
     this.app.workspace.onLayoutReady(() => {
@@ -414,6 +427,15 @@ export default class ObsidianAssistant extends Plugin {
         chunkSize: this.settings.chunkSize,
         chunkOverlap: this.settings.chunkOverlap,
       });
+
+      // Update embedding configuration when settings change
+      this.searchService.updateEmbeddingConfig(
+        {
+          serviceUrl: this.settings.llmServiceUrl,
+          model: this.settings.embeddingModel,
+        },
+        this.settings.useVectorSearch
+      );
     }
   }
 }
@@ -536,6 +558,60 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
           if (!isNaN(numValue) && numValue >= 0) {
             this.plugin.settings.chunkOverlap = numValue;
             await this.plugin.saveSettings();
+          }
+        });
+      });
+
+    // Hybrid search settings
+    containerEl.createEl('h3', { text: 'Hybrid Search Settings' });
+
+    // Use hybrid search toggle
+    new Setting(containerEl)
+      .setName('Enable Hybrid Search')
+      .setDesc(
+        'Use hybrid search (combining semantic vectors and keywords) instead of keyword search only (requires Ollama)'
+      )
+      .addToggle((toggle) => {
+        toggle.setValue(this.plugin.settings.useVectorSearch).onChange(async (value) => {
+          this.plugin.settings.useVectorSearch = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    // Embedding model selection
+    new Setting(containerEl)
+      .setName('Embedding Model')
+      .setDesc(
+        'Select the embedding model to use for the semantic component of hybrid search (e.g., nomic-embed-text)'
+      )
+      .addText((text) => {
+        text.setValue(this.plugin.settings.embeddingModel).onChange(async (value: string) => {
+          this.plugin.settings.embeddingModel = value;
+          await this.plugin.saveSettings();
+        });
+      });
+
+    // Index management section
+    containerEl.createEl('h3', { text: 'Index Management' });
+
+    // Reindex button
+    new Setting(containerEl)
+      .setName('Reindex All Documents')
+      .setDesc('Clear the current index and reindex all documents in the vault')
+      .addButton((button) => {
+        button.setButtonText('Reindex Now').onClick(async () => {
+          try {
+            // Show notice that reindexing has started
+            new Notice('Reindexing started. This may take a while...');
+
+            // Call the reindexAll method
+            await this.plugin.searchService.reindexAll();
+
+            // Show success notice
+            new Notice('Reindexing completed successfully');
+          } catch (error) {
+            console.error('Error during reindexing:', error);
+            new Notice('Error during reindexing. Check console for details.');
           }
         });
       });
