@@ -135,3 +135,6 @@ When vector search is enabled, the plugin uses a hybrid search approach:
 ## License
 
 MIT License
+
+## Disclaimer: AI generated content
+Most of the code in this plugin was generated using Jetbrains Junie. I'm a professional software engineer, but I'm not experienced in JavaScript / TypeScript. I used Junie to speed up development and focus on the plugin's architecture and features. The code should be high quality, but please report any issues you find, including common design patterns in TypeScript.
