@@ -5,21 +5,28 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
 ## Features
 
 - Side-panel that provides chat with an LLM
-- Support for multiple LLM services (currently just Ollama)
-- Vector search of chunks using embedding models from Ollama
+- Support for multiple LLM services (Ollama and OpenAI API-compatible services)
+- Vector search of chunks using embedding models from Ollama or OpenAI API-compatible services
 - Configuration options:
-  - LLM service selection (currently just Ollama)
+  - LLM service selection (Ollama or OpenAI API-compatible)
   - LLM model selection
   - LLM service URL
+  - LLM API key (for OpenAI API-compatible services)
   - LLM system prompt (optional; default is to use the API's default system prompt)
-  - Vector search settings (embedding model, toggle on/off)
+  - Vector search settings:
+    - Toggle on/off
+    - Embedding service selection (Ollama or OpenAI API-compatible)
+    - Embedding model selection
+    - Embedding API key (for OpenAI API-compatible services)
   - Document chunking settings (chunk size, overlap)
 - Responsive design that works well on desktop and mobile
 
 ## Requirements
 
 - Obsidian version 1.8 or later
-- LLM service (currently supports Ollama)
+- One of the following LLM services:
+  - Ollama (local, free)
+  - OpenAI API or compatible service (requires API key)
 - Node.js version 22.17.0 or later (for development only)
 
 ## Installation
@@ -46,15 +53,31 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
 ### Setting Up
 
 1. Install and enable the plugin
-2. Make sure you have an LLM service running (e.g., Ollama)
+2. Choose your LLM service:
+   - For Ollama:
+     - Make sure you have Ollama installed and running
+     - Pull your desired models (e.g., `ollama pull llama3` and `ollama pull nomic-embed-text`)
+   - For OpenAI API or compatible service:
+     - Obtain an API key from your provider
 3. Go to Settings > Obsidian Assistant to configure:
-   - LLM service (currently only Ollama is supported)
-   - LLM model (e.g., llama3)
-   - LLM service URL (e.g., http://localhost:11434 for Ollama)
+   - LLM service:
+     - Select "Ollama" or "OpenAI API Compatible"
+     - For Ollama:
+       - LLM model (e.g., llama3)
+       - LLM service URL (e.g., http://localhost:11434)
+     - For OpenAI API Compatible:
+       - LLM model (e.g., gpt-3.5-turbo, gpt-4)
+       - LLM service URL (e.g., https://api.openai.com)
+       - LLM API key
    - Optional system prompt
    - Vector search settings:
      - Enable/disable vector search
-     - Embedding model (e.g., nomic-embed-text)
+     - Embedding service:
+       - Select "Ollama" or "OpenAI API Compatible"
+     - Embedding model:
+       - For Ollama: e.g., nomic-embed-text
+       - For OpenAI: e.g., text-embedding-3-small
+     - Embedding API key (for OpenAI)
    - Document chunking settings:
      - Chunk size (default: 1000 characters)
      - Chunk overlap (default: 200 characters)

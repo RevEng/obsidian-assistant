@@ -8,6 +8,7 @@ export interface LLMServiceConfig {
   model: string;
   serviceUrl: string;
   systemPrompt?: string;
+  apiKey?: string;
 }
 
 /**
@@ -48,12 +49,6 @@ export class LLMService {
    */
   async sendMessage(messages: ChatMessage[], contextData?: string): Promise<string> {
     try {
-      // Log whether contextData was provided and its contents
-      console.log(`contextData provided: ${contextData ? 'yes' : 'no'}`);
-      if (contextData) {
-        console.log(`contextData contents: ${contextData}`);
-      }
-
       // Create a single system message if needed
       const allMessages: ChatMessage[] = [];
 
@@ -88,6 +83,8 @@ export class LLMService {
       switch (this.config.service) {
         case 'ollama':
           return await this.callOllama(allMessages);
+        case 'openai':
+          return await this.callOpenAI(allMessages);
         default:
           throw new Error(`Unsupported LLM service: ${this.config.service}`);
       }
@@ -117,7 +114,6 @@ export class LLMService {
         messages: ollamaMessages,
         stream: false,
       });
-      console.log('Calling Ollama API with body:', body);
       const response = await fetch(`${this.config.serviceUrl}/api/chat`, {
         method: 'POST',
         headers: {
@@ -137,6 +133,55 @@ export class LLMService {
       console.error('Error calling Ollama:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error calling Ollama: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Call the OpenAI API
+   * @param messages - Array of chat messages
+   * @returns Promise with the OpenAI response
+   */
+  private async callOpenAI(messages: ChatMessage[]): Promise<string> {
+    try {
+      // Convert messages to OpenAI format (same format as our ChatMessage)
+      const openaiMessages = messages.map((msg) => ({
+        role: msg.role,
+        content: msg.content,
+      }));
+
+      // Prepare request to OpenAI API
+      const body = JSON.stringify({
+        model: this.config.model,
+        messages: openaiMessages,
+      });
+
+      // Prepare headers with API key if provided
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
+
+      if (this.config.apiKey) {
+        headers.Authorization = `Bearer ${this.config.apiKey}`;
+      }
+
+      const response = await fetch(`${this.config.serviceUrl}/v1/chat/completions`, {
+        method: 'POST',
+        headers: headers,
+        body: body,
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.choices?.[0]?.message?.content || 'No response from OpenAI';
+    } catch (error) {
+      console.error('Error calling OpenAI:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Error calling OpenAI: ${errorMessage}`);
       throw error;
     }
   }

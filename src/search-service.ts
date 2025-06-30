@@ -264,8 +264,6 @@ export class SearchService {
             // Store the embedding in the chunk and in the map
             chunk.embedding = embedding;
             this.documentEmbeddings.set(chunk.id, embedding);
-
-            console.log(`Generated embedding for chunk ${chunk.id}`);
           } catch (error) {
             console.error(`Error generating embedding for chunk ${chunk.id}:`, error);
             // Continue with other chunks even if embedding fails for one

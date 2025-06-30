@@ -6,6 +6,7 @@ global.fetch = jest.fn();
 describe('EmbeddingService', () => {
   let embeddingService: EmbeddingService;
   const mockConfig: EmbeddingServiceConfig = {
+    service: 'ollama',
     serviceUrl: 'http://localhost:11434',
     model: 'nomic-embed-text',
   };
@@ -33,6 +34,7 @@ describe('EmbeddingService', () => {
 
   test('should update config correctly', () => {
     const newConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
       serviceUrl: 'http://localhost:8000',
       model: 'different-model',
     };

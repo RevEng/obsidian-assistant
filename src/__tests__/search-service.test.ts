@@ -162,6 +162,7 @@ describe('SearchService', () => {
 
   test('should initialize with embedding configuration', () => {
     const embeddingConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
       serviceUrl: 'http://localhost:11434',
       model: 'nomic-embed-text',
     };
@@ -183,6 +184,7 @@ describe('SearchService', () => {
 
   test('should update embedding configuration correctly', () => {
     const embeddingConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
       serviceUrl: 'http://localhost:11434',
       model: 'nomic-embed-text',
     };
@@ -218,6 +220,7 @@ describe('SearchService', () => {
 
     // Set up embedding service
     const embeddingConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
       serviceUrl: 'http://localhost:11434',
       model: 'nomic-embed-text',
     };
