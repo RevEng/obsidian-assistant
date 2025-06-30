@@ -1,0 +1,10 @@
+/tmp
+/out-tsc
+
+/node_modules
+npm-debug.log*
+
+/.DS_Store
+/.idea
+/release/*
+/main.js
