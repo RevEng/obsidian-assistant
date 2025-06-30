@@ -33,6 +33,7 @@ interface ObsidianAssistantSettings {
   chunkSize: number;
   chunkOverlap: number;
   useVectorSearch: boolean;
+  maxSearchResults: number;
   ollamaEmbeddingConfig: {
     model: string;
   };
@@ -61,6 +62,7 @@ const DEFAULT_SETTINGS: ObsidianAssistantSettings = {
   chunkSize: 1000,
   chunkOverlap: 200,
   useVectorSearch: false,
+  maxSearchResults: 5,
   ollamaEmbeddingConfig: {
     model: 'nomic-embed-text',
   },
@@ -430,7 +432,8 @@ export default class ObsidianAssistant extends Plugin {
         chunkOverlap: this.settings.chunkOverlap,
       },
       embeddingConfig,
-      this.settings.useVectorSearch
+      this.settings.useVectorSearch,
+      this.settings.maxSearchResults
     );
 
     // Wait for layout to be ready before initializing the search index
@@ -631,6 +634,9 @@ export default class ObsidianAssistant extends Plugin {
       }
 
       this.searchService.updateEmbeddingConfig(embeddingConfig, this.settings.useVectorSearch);
+
+      // Update max search results when settings change
+      this.searchService.updateMaxSearchResults(this.settings.maxSearchResults);
     }
   }
 }
@@ -793,6 +799,20 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
         toggle.setValue(this.plugin.settings.useVectorSearch).onChange(async (value) => {
           this.plugin.settings.useVectorSearch = value;
           await this.plugin.saveSettings();
+        });
+      });
+
+    // Maximum search results setting
+    new Setting(containerEl)
+      .setName('Maximum Search Results')
+      .setDesc('The maximum number of search results to return (default: 5)')
+      .addText((text) => {
+        text.setValue(String(this.plugin.settings.maxSearchResults)).onChange(async (value) => {
+          const numValue = Number(value);
+          if (!isNaN(numValue) && numValue > 0) {
+            this.plugin.settings.maxSearchResults = numValue;
+            await this.plugin.saveSettings();
+          }
         });
       });
 

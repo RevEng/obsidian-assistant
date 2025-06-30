@@ -15,6 +15,7 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
   - LLM system prompt (optional; default is to use the API's default system prompt)
   - Vector search settings:
     - Toggle on/off
+    - Maximum search results to return
     - Embedding service selection (Ollama or OpenAI API-compatible)
     - Embedding model selection
     - Embedding API key (for OpenAI API-compatible services)
@@ -72,6 +73,7 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
    - Optional system prompt
    - Vector search settings:
      - Enable/disable vector search
+     - Maximum search results (default: 5)
      - Embedding service:
        - Select "Ollama" or "OpenAI API Compatible"
      - Embedding model:

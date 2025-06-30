@@ -42,6 +42,7 @@ export class SearchService {
   private embeddingService: EmbeddingService | null = null;
   private documentEmbeddings: Map<string, number[]> = new Map();
   private useVectorSearch = false;
+  private maxSearchResults = 5;
 
   /**
    * Constructor
@@ -54,11 +55,13 @@ export class SearchService {
     app: App,
     chunkingOptions: ChunkingOptions = { chunkSize: 1000, chunkOverlap: 200 },
     embeddingConfig?: EmbeddingServiceConfig,
-    useVectorSearch = false
+    useVectorSearch = false,
+    maxSearchResults = 5
   ) {
     this.app = app;
     this.chunkingOptions = chunkingOptions;
     this.useVectorSearch = useVectorSearch;
+    this.maxSearchResults = maxSearchResults;
 
     // Initialize embedding service if config is provided
     if (embeddingConfig) {
@@ -89,6 +92,14 @@ export class SearchService {
         this.embeddingService = new EmbeddingService(config);
       }
     }
+  }
+
+  /**
+   * Update maximum search results
+   * @param maxSearchResults - New maximum search results
+   */
+  updateMaxSearchResults(maxSearchResults: number): void {
+    this.maxSearchResults = maxSearchResults;
   }
 
   /**
@@ -289,8 +300,10 @@ export class SearchService {
    */
   private async vectorSearch(
     query: string,
-    limit: number = 5
+    limit?: number
   ): Promise<{ document: NoteDocument; score: number }[]> {
+    // Use provided limit or fall back to class property
+    const searchLimit = limit || this.maxSearchResults;
     if (!this.embeddingService || this.documentEmbeddings.size === 0) {
       console.warn(
         'Vector search not available: embedding service not initialized or no embeddings stored'
@@ -330,7 +343,7 @@ export class SearchService {
       results.sort((a, b) => b.score - a.score);
 
       // Return top results
-      return results.slice(0, limit);
+      return results.slice(0, searchLimit);
     } catch (error) {
       console.error('Error performing vector search:', error);
       return [];
@@ -366,12 +379,12 @@ export class SearchService {
           console.log('Using hybrid search (vector + keyword)...');
 
           // Get vector search results
-          const vectorResults = await this.vectorSearch(query, 10);
+          const vectorResults = await this.vectorSearch(query, this.maxSearchResults * 2);
 
           // Get keyword search results
           const keywordSearchResults = await search(this.index, {
             term: query,
-            limit: 10, // Increase limit for better hybrid results
+            limit: this.maxSearchResults * 2, // Increase limit for better hybrid results
           });
 
           // Convert keyword results to our format
@@ -405,12 +418,12 @@ export class SearchService {
           // Convert map back to array and sort by score
           results = Array.from(combinedResultsMap.values())
             .sort((a, b) => b.score - a.score)
-            .slice(0, 5);
+            .slice(0, this.maxSearchResults);
         } else {
           console.log('Using keyword search...');
           const searchResults = await search(this.index, {
             term: query,
-            limit: 5, // Limit to top 5 results
+            limit: this.maxSearchResults, // Limit to configured number of results
           });
 
           // Convert Orama results to our format
