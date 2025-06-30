@@ -1,12 +1,18 @@
 import { SearchService, SearchOptions, ChunkingOptions, NoteDocument } from '../search-service';
 import { App, TFile } from 'obsidian';
-import { create, insertMultiple, search } from '@orama/orama';
+import {
+  create,
+  insertMultiple,
+  search,
+  remove,
+} from '@orama/orama';
 import { EmbeddingService, EmbeddingServiceConfig } from '../embedding-service';
 
 // Mock @orama/orama functions
 jest.mock('@orama/orama', () => ({
   create: jest.fn().mockResolvedValue({ id: 'mock-index' }),
   insertMultiple: jest.fn().mockResolvedValue(undefined),
+  remove: jest.fn().mockResolvedValue(undefined),
   search: jest.fn().mockResolvedValue({
     hits: [
       {
@@ -34,6 +40,30 @@ jest.mock('../embedding-service', () => {
     }),
   };
 });
+
+// Mock for testing reindexing
+const mockSearchResultsWithExistingFile = {
+  hits: [
+    {
+      document: {
+        id: 'test-file-path-chunk-0',
+        title: 'Test File',
+        content: 'This is test content that matches the search query.',
+        path: 'test-file-path',
+      },
+      score: 0.75,
+    },
+    {
+      document: {
+        id: 'test-file-path-chunk-1',
+        title: 'Test File',
+        content: 'This is more test content for the same file.',
+        path: 'test-file-path',
+      },
+      score: 0.65,
+    },
+  ],
+};
 
 describe('SearchService', () => {
   let searchService: SearchService;
@@ -275,5 +305,55 @@ describe('SearchService', () => {
       reconstructedContent += chunks[i].content.substring(50);
     }
     expect(reconstructedContent).toBe(loremIpsum);
+  });
+
+  test('should remove existing chunks when reindexing a file', async () => {
+    // Create a standalone test that doesn't depend on other tests
+
+    // Create a new instance of SearchService for this test
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property directly
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-reindex-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Set up the search mock to return existing chunks for the first call
+    // and empty results for subsequent calls
+    (search as jest.Mock)
+      .mockResolvedValueOnce(mockSearchResultsWithExistingFile) // First call returns existing chunks
+      .mockResolvedValue({ hits: [] }); // Subsequent calls return empty results
+
+    // Call indexFile to reindex the file
+    await testSearchService.indexFile(mockFiles[0]);
+
+    // Verify that search was called to check for existing chunks
+    expect(search).toHaveBeenCalledWith(
+      { id: 'mock-index-for-reindex-test' }, // The mock index we set
+      {
+        term: 'test-file-path',
+        properties: ['path'],
+        exact: true,
+        limit: 100,
+      }
+    );
+
+    // Verify that remove was called for each existing chunk
+    expect(remove).toHaveBeenCalledTimes(2);
+    expect(remove).toHaveBeenCalledWith(
+      { id: 'mock-index-for-reindex-test' },
+      'test-file-path-chunk-0'
+    );
+    expect(remove).toHaveBeenCalledWith(
+      { id: 'mock-index-for-reindex-test' },
+      'test-file-path-chunk-1'
+    );
+
+    // Verify that insertMultiple was called to add the new chunks
+    expect(insertMultiple).toHaveBeenCalled();
   });
 });

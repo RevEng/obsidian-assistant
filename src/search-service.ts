@@ -1,5 +1,5 @@
 import { App, TFile } from 'obsidian';
-import { create, insertMultiple, search } from '@orama/orama';
+import { create, insertMultiple, search, remove } from '@orama/orama';
 import { EmbeddingService, EmbeddingServiceConfig } from './embedding-service';
 
 /**
@@ -216,6 +216,31 @@ export class SearchService {
     }
 
     try {
+      // Check if the file already exists in the index by searching for its path
+      const searchResults = await search(this.index, {
+        term: file.path,
+        properties: ['path'],
+        exact: true,
+      });
+
+      // If the file already exists in the index, remove all its chunks
+      if (searchResults.hits.length > 0) {
+        console.log(`File ${file.path} already exists in the index. Removing existing chunks...`);
+
+        // Remove each chunk from the index
+        for (const hit of searchResults.hits) {
+          const document = hit.document as NoteDocument;
+          await remove(this.index, document.id);
+
+          // Also remove from embeddings map if vector search is enabled
+          if (this.useVectorSearch) {
+            this.documentEmbeddings.delete(document.id);
+          }
+        }
+
+        console.log(`Removed ${searchResults.hits.length} existing chunks for file ${file.path}`);
+      }
+
       const content = await this.app.vault.read(file);
 
       // Create the document object
