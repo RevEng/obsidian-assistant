@@ -43,6 +43,9 @@ const DEFAULT_SETTINGS: ObsidianAssistantSettings = {
 // View type for the chat panel
 const VIEW_TYPE_CHAT = 'obsidian-assistant-chat-view';
 
+// Cooldown period in seconds before reindexing a file after it has been modified
+const fileEditedCooldownPeriod = 5;
+
 // Chat view class
 class ChatView extends ItemView {
   plugin: ObsidianAssistant;
@@ -309,6 +312,12 @@ class ChatView extends ItemView {
         await this.plugin.saveSettings();
       }
 
+      // If searching the vault, immediately reindex any scheduled files
+      if (searchOptions.useVaultSearch) {
+        // Process any pending reindexing operations immediately
+        await this.plugin.reindexScheduledFiles();
+      }
+
       // Use the search service to search the vault
       const contextData = await this.plugin.searchService.searchVault(query, searchOptions);
 
@@ -328,6 +337,8 @@ class ChatView extends ItemView {
 export default class ObsidianAssistant extends Plugin {
   settings: ObsidianAssistantSettings = DEFAULT_SETTINGS;
   searchService!: SearchService;
+  private fileReindexTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private filesScheduledForReindex: Set<TFile> = new Set();
 
   async onload() {
     await this.loadSettings();
@@ -355,8 +366,8 @@ export default class ObsidianAssistant extends Plugin {
     // Register event to reindex when a file is modified
     this.registerEvent(
       this.app.vault.on('modify', (file) => {
-        if (file instanceof TFile && file.extension === 'md' && this.searchService.isIndexReady()) {
-          this.searchService.indexFile(file);
+        if (file instanceof TFile && file.extension === 'md') {
+          this.scheduleFileReindex(file);
         }
       })
     );
@@ -364,8 +375,8 @@ export default class ObsidianAssistant extends Plugin {
     // Register event to reindex when a file is created
     this.registerEvent(
       this.app.vault.on('create', (file) => {
-        if (file instanceof TFile && file.extension === 'md' && this.searchService.isIndexReady()) {
-          this.searchService.indexFile(file);
+        if (file instanceof TFile && file.extension === 'md') {
+          this.scheduleFileReindex(file);
         }
       })
     );
@@ -413,6 +424,35 @@ export default class ObsidianAssistant extends Plugin {
     }
   }
 
+  // Schedule file reindexing after cooldown period
+  scheduleFileReindex(file: TFile) {
+    if (!this.searchService.isIndexReady()) {
+      return;
+    }
+
+    const filePath = file.path;
+
+    // Add file to the set of files scheduled for reindexing
+    this.filesScheduledForReindex.add(file);
+
+    // Cancel any existing timeout for this file
+    if (this.fileReindexTimeouts.has(filePath)) {
+      clearTimeout(this.fileReindexTimeouts.get(filePath));
+      this.fileReindexTimeouts.delete(filePath);
+    }
+
+    // Set a new timeout to reindex the file after the cooldown period
+    const timeout = setTimeout(() => {
+      this.searchService.indexFile(file);
+      this.fileReindexTimeouts.delete(filePath);
+      this.filesScheduledForReindex.delete(file);
+      console.log(`Reindexed file ${filePath} after cooldown period`);
+    }, fileEditedCooldownPeriod * 1000);
+
+    this.fileReindexTimeouts.set(filePath, timeout);
+    console.log(`Scheduled reindexing for file ${filePath} in ${fileEditedCooldownPeriod} seconds`);
+  }
+
   // Activate the chat view
   async activateView() {
     const { workspace } = this.app;
@@ -438,6 +478,47 @@ export default class ObsidianAssistant extends Plugin {
 
   onunload() {
     // Clean up resources when plugin is disabled
+
+    // Clear all pending reindex timeouts
+    for (const timeout of this.fileReindexTimeouts.values()) {
+      clearTimeout(timeout);
+    }
+    this.fileReindexTimeouts.clear();
+    this.filesScheduledForReindex.clear();
+  }
+
+  // Immediately reindex all files that are scheduled for reindexing
+  async reindexScheduledFiles(): Promise<void> {
+    if (this.filesScheduledForReindex.size === 0) {
+      return;
+    }
+
+    console.log(`Immediately reindexing ${this.filesScheduledForReindex.size} scheduled files`);
+
+    // Create an array of promises for reindexing each file
+    const reindexPromises: Promise<void>[] = [];
+
+    // Process each scheduled file
+    for (const file of this.filesScheduledForReindex) {
+      const filePath = file.path;
+
+      // Cancel any existing timeout
+      if (this.fileReindexTimeouts.has(filePath)) {
+        clearTimeout(this.fileReindexTimeouts.get(filePath));
+        this.fileReindexTimeouts.delete(filePath);
+      }
+
+      // Reindex the file immediately and add the promise to our array
+      reindexPromises.push(this.searchService.indexFile(file));
+    }
+
+    // Wait for all reindexing operations to complete
+    await Promise.all(reindexPromises);
+
+    // Clear the set of files scheduled for reindexing
+    this.filesScheduledForReindex.clear();
+
+    console.log('All scheduled files have been reindexed');
   }
 
   async loadSettings() {

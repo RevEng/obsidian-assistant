@@ -1,11 +1,6 @@
 import { SearchService, SearchOptions, ChunkingOptions, NoteDocument } from '../search-service';
 import { App, TFile } from 'obsidian';
-import {
-  create,
-  insertMultiple,
-  search,
-  remove,
-} from '@orama/orama';
+import { create, insertMultiple, search, remove } from '@orama/orama';
 import { EmbeddingService, EmbeddingServiceConfig } from '../embedding-service';
 
 // Mock @orama/orama functions
@@ -338,7 +333,6 @@ describe('SearchService', () => {
         term: 'test-file-path',
         properties: ['path'],
         exact: true,
-        limit: 100,
       }
     );
 
