@@ -138,7 +138,7 @@ describe('LLMService', () => {
     expect(systemMessage).toBeDefined();
     expect(systemMessage.content).toContain('You are a helpful assistant.');
     expect(systemMessage.content).toContain(
-      'Context information: This is some context data from the vault'
+      '<DOCUMENT>\nThis is some context data from the vault</DOCUMENT>'
     );
   });
 });

@@ -25,6 +25,7 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@orama/orama": "^2.0.0",
     "obsidian": "^1.4.0"
   },
   "devDependencies": {

@@ -170,6 +170,34 @@
   background-color: var(--background-secondary-alt);
 }
 
+/* Search options */
+.obsidian-assistant-search-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 8px 10px;
+  background-color: var(--background-secondary);
+  border-radius: 4px;
+  margin: 0 10px 10px 10px;
+}
+
+.obsidian-assistant-checkbox-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.obsidian-assistant-checkbox-container input[type='checkbox'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.obsidian-assistant-checkbox-container label {
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+
 /* Loading indicator */
 .obsidian-assistant-loading {
   opacity: 0.7;
