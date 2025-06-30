@@ -506,31 +506,6 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
         textarea.inputEl.rows = 4;
       });
 
-    // Search settings section
-    containerEl.createEl('h3', { text: 'Search Settings' });
-
-    // Use current note toggle
-    new Setting(containerEl)
-      .setName('Use Current Note')
-      .setDesc('Include the content of the current note when answering questions')
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.useCurrentNote).onChange(async (value) => {
-          this.plugin.settings.useCurrentNote = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
-    // Use vault search toggle
-    new Setting(containerEl)
-      .setName('Use Vault Search')
-      .setDesc('Search the entire vault for relevant content when answering questions')
-      .addToggle((toggle) => {
-        toggle.setValue(this.plugin.settings.useVaultSearch).onChange(async (value) => {
-          this.plugin.settings.useVaultSearch = value;
-          await this.plugin.saveSettings();
-        });
-      });
-
     // Document chunking settings
     containerEl.createEl('h3', { text: 'Document Chunking Settings' });
 
