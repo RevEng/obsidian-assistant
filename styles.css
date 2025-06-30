@@ -181,6 +181,41 @@
   margin: 0 10px 10px 10px;
 }
 
+/* Context source container */
+.obsidian-assistant-context-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Context source label */
+.obsidian-assistant-context-source-label {
+  font-size: 0.85em;
+  font-weight: 500;
+  margin-right: 5px;
+}
+
+/* Radio button container */
+.obsidian-assistant-radio-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* Radio button styling */
+.obsidian-assistant-radio-container input[type='radio'] {
+  margin: 0;
+  cursor: pointer;
+}
+
+.obsidian-assistant-radio-container label {
+  font-size: 0.85em;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* Keep checkbox styles for backward compatibility */
 .obsidian-assistant-checkbox-container {
   display: flex;
   align-items: center;
