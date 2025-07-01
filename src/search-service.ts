@@ -60,6 +60,7 @@ export class SearchService {
    * @param chunkingOptions - Options for document chunking
    * @param embeddingConfig - Optional configuration for embedding service
    * @param useVectorSearch - Whether to use vector search
+   * @param maxSearchResults - Maximum number of search results to return
    */
   constructor(
     app: App,
