@@ -125,6 +125,7 @@ describe('SearchService', () => {
         })
       ),
       write: jest.fn().mockResolvedValue(undefined),
+      remove: jest.fn().mockResolvedValue(undefined),
     };
 
     // Set up mock workspace for getCurrentNoteContent testing
@@ -749,5 +750,65 @@ describe('SearchService', () => {
 
     // Clean up spy
     clearIntervalSpy.mockRestore();
+  });
+
+  test('should delete index file and reindex all files when reindexAll is called', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property and set indexReady to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-reindex-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).fileModificationTimes.set('test-file-path', 1234567890000);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).documentEmbeddings.set(
+      'test-file-path-chunk-0',
+      [0.1, 0.2, 0.3, 0.4, 0.5]
+    );
+
+    try {
+      // Reset all mocks
+      jest.clearAllMocks();
+
+      // Mock adapter.exists to return true initially to simulate existing index file
+      (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValueOnce(true);
+
+      // Mock adapter.exists to return false after the file is deleted
+      (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(false);
+
+      // Call reindexAll method
+      await testSearchService.reindexAll();
+
+      // Verify that adapter.exists was called to check for the index file
+      expect(mockApp.vault.adapter.exists).toHaveBeenCalledWith('.obsidian/search-index.json');
+
+      // Verify that adapter.remove was called to delete the index file
+      expect(mockApp.vault.adapter.remove).toHaveBeenCalledWith('.obsidian/search-index.json');
+
+      // Verify that documentEmbeddings were cleared
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((testSearchService as any).documentEmbeddings.size).toBe(0);
+
+      // Verify that fileModificationTimes were updated with the reindexed files
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((testSearchService as any).fileModificationTimes.size).toBe(2); // Two files were reindexed
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((testSearchService as any).fileModificationTimes.has('test-file-path')).toBe(true);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      expect((testSearchService as any).fileModificationTimes.has('another-file-path')).toBe(true);
+
+      // Verify that initializeIndex was called to create a new index
+      expect(create).toHaveBeenCalled();
+
+      // Verify that indexVault was called to reindex all files
+      expect(mockApp.vault.getMarkdownFiles).toHaveBeenCalled();
+      expect(insertMultiple).toHaveBeenCalled();
+    } finally {
+      // Clean up any timers to prevent memory leaks
+      testSearchService.cleanup();
+    }
   });
 });

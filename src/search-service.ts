@@ -701,7 +701,14 @@ export class SearchService {
       // Mark the index as dirty
       this.markDirty();
 
-      // Initialize a new index (this will clear the old one)
+      // Delete the index file from disk
+      const exists = await this.app.vault.adapter.exists(this.indexFilePath);
+      if (exists) {
+        console.log(`Deleting existing index file: ${this.indexFilePath}`);
+        await this.app.vault.adapter.remove(this.indexFilePath);
+      }
+
+      // Initialize a new index (this will create a fresh one)
       await this.initializeIndex();
 
       console.log('Reindexing completed successfully');

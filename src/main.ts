@@ -794,7 +794,6 @@ export default class ObsidianAssistant extends Plugin {
 
       // Send the message by clicking the send button
       sendButton.click();
-
     } catch (error) {
       console.error('Error summarizing note:', error);
       new Notice(
