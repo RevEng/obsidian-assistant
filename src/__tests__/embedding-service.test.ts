@@ -45,9 +45,9 @@ describe('EmbeddingService', () => {
     expect((embeddingService as any).config).toEqual(newConfig);
   });
 
-  test('should get embeddings correctly', async () => {
-    const text = 'This is a test text';
-    const embedding = await embeddingService.getEmbedding(text);
+  test('should get document embeddings correctly', async () => {
+    const text = 'This is a test document text';
+    const embedding = await embeddingService.getDocumentEmbedding(text);
 
     // Check that fetch was called with the correct parameters
     expect(global.fetch).toHaveBeenCalledWith('http://localhost:11434/api/embeddings', {
@@ -58,6 +58,28 @@ describe('EmbeddingService', () => {
       body: JSON.stringify({
         model: 'nomic-embed-text',
         prompt: text,
+        input_type: 'passage',
+      }),
+    });
+
+    // Check that the embedding is returned correctly
+    expect(embedding).toEqual([0.1, 0.2, 0.3, 0.4, 0.5]);
+  });
+
+  test('should get query embeddings correctly', async () => {
+    const text = 'This is a test query text';
+    const embedding = await embeddingService.getQueryEmbedding(text);
+
+    // Check that fetch was called with the correct parameters
+    expect(global.fetch).toHaveBeenCalledWith('http://localhost:11434/api/embeddings', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'nomic-embed-text',
+        prompt: text,
+        input_type: 'query',
       }),
     });
 
@@ -75,8 +97,8 @@ describe('EmbeddingService', () => {
 
     const text = 'This is a test text';
 
-    // The getEmbedding method should throw an error
-    await expect(embeddingService.getEmbedding(text)).rejects.toThrow();
+    // The getDocumentEmbedding method should throw an error
+    await expect(embeddingService.getDocumentEmbedding(text)).rejects.toThrow();
   });
 
   test('should calculate cosine similarity correctly', () => {

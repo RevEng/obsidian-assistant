@@ -269,8 +269,8 @@ export class SearchService {
       if (this.useVectorSearch && this.embeddingService) {
         for (const chunk of chunks) {
           try {
-            // Generate embedding for the chunk
-            const embedding = await this.embeddingService.getEmbedding(chunk.content);
+            // Generate embedding for the chunk (document/passage)
+            const embedding = await this.embeddingService.getDocumentEmbedding(chunk.content);
 
             // Store the embedding in the chunk and in the map
             chunk.embedding = embedding;
@@ -313,7 +313,7 @@ export class SearchService {
 
     try {
       // Generate embedding for the query
-      const queryEmbedding = await this.embeddingService.getEmbedding(query);
+      const queryEmbedding = await this.embeddingService.getQueryEmbedding(query);
 
       // Calculate similarity scores for all documents
       const results: { document: NoteDocument; score: number }[] = [];

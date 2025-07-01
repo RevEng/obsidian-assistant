@@ -33,25 +33,49 @@ export class EmbeddingService {
   }
 
   /**
-   * Get embeddings for a text
+   * Get embeddings for a document/passage to be stored
    * @param text - Text to get embeddings for
    * @returns Promise with the embedding vector
    */
-  async getEmbedding(text: string): Promise<number[]> {
+  async getDocumentEmbedding(text: string): Promise<number[]> {
     try {
       // Handle different embedding services
       switch (this.config.service) {
         case 'ollama':
-          return await this.getOllamaEmbedding(text);
+          return await this.getOllamaEmbedding(text, 'passage');
         case 'openai':
-          return await this.getOpenAIEmbedding(text);
+          return await this.getOpenAIEmbedding(text, 'passage');
         default:
           throw new Error(`Unsupported embedding service: ${this.config.service}`);
       }
     } catch (error) {
-      console.error('Error getting embedding:', error);
+      console.error('Error getting document embedding:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      new Notice(`Error getting embedding: ${errorMessage}`);
+      new Notice(`Error getting document embedding: ${errorMessage}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Get embeddings for a search query
+   * @param text - Text to get embeddings for
+   * @returns Promise with the embedding vector
+   */
+  async getQueryEmbedding(text: string): Promise<number[]> {
+    try {
+      // Handle different embedding services
+      switch (this.config.service) {
+        case 'ollama':
+          return await this.getOllamaEmbedding(text, 'query');
+        case 'openai':
+          return await this.getOpenAIEmbedding(text, 'query');
+        default:
+          throw new Error(`Unsupported embedding service: ${this.config.service}`);
+      }
+    } catch (error) {
+      console.error('Error getting query embedding:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Error getting query embedding: ${errorMessage}`);
       throw error;
     }
   }
@@ -59,13 +83,18 @@ export class EmbeddingService {
   /**
    * Get embeddings from Ollama API
    * @param text - Text to get embeddings for
+   * @param inputType - Type of input ('passage' for document or 'query' for search)
    * @returns Promise with the embedding vector
    */
-  private async getOllamaEmbedding(text: string): Promise<number[]> {
+  private async getOllamaEmbedding(
+    text: string,
+    inputType: 'passage' | 'query'
+  ): Promise<number[]> {
     // Prepare request to Ollama API
     const body = JSON.stringify({
       model: this.config.model,
       prompt: text,
+      input_type: inputType,
     });
 
     const response = await fetch(`${this.config.serviceUrl}/api/embeddings`, {
@@ -88,9 +117,13 @@ export class EmbeddingService {
   /**
    * Get embeddings from OpenAI API
    * @param text - Text to get embeddings for
+   * @param inputType - Type of input ('passage' for document or 'query' for search)
    * @returns Promise with the embedding vector
    */
-  private async getOpenAIEmbedding(text: string): Promise<number[]> {
+  private async getOpenAIEmbedding(
+    text: string,
+    inputType: 'passage' | 'query'
+  ): Promise<number[]> {
     // Prepare headers with API key if provided
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -104,6 +137,7 @@ export class EmbeddingService {
     const body = JSON.stringify({
       model: this.config.model,
       input: text,
+      input_type: inputType,
     });
 
     const response = await fetch(`${this.config.serviceUrl}/v1/embeddings`, {
