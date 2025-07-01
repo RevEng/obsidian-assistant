@@ -38,6 +38,7 @@ export class SearchService {
   private index: any | null = null;
   private indexReady = false;
   private indexingInProgress = false;
+  private indexingFailed = false;
   private chunkingOptions: ChunkingOptions;
   private embeddingService: EmbeddingService | null = null;
   private documentEmbeddings: Map<string, number[]> = new Map();
@@ -185,10 +186,12 @@ export class SearchService {
 
       this.indexReady = true;
       this.indexingInProgress = false;
+      this.indexingFailed = false;
       console.log('Orama search index initialized');
     } catch (error) {
       console.error('Error initializing search index:', error);
       this.indexingInProgress = false;
+      this.indexingFailed = true;
       throw error;
     }
   }
@@ -521,6 +524,14 @@ export class SearchService {
   }
 
   /**
+   * Check if indexing has failed
+   * @returns Boolean indicating if indexing has failed
+   */
+  isIndexingFailed(): boolean {
+    return this.indexingFailed;
+  }
+
+  /**
    * Clear the index and reindex all documents
    * @returns Promise that resolves when reindexing is complete
    */
@@ -531,6 +542,7 @@ export class SearchService {
       // Reset state
       this.indexReady = false;
       this.documentEmbeddings.clear();
+      this.indexingFailed = false;
 
       // Initialize a new index (this will clear the old one)
       await this.initializeIndex();

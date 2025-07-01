@@ -505,7 +505,8 @@ export default class ObsidianAssistant extends Plugin {
 
   // Schedule file reindexing after cooldown period
   scheduleFileReindex(file: TFile) {
-    if (!this.searchService.isIndexReady()) {
+    // Don't schedule reindexing if the index is not ready or if indexing has failed
+    if (!this.searchService.isIndexReady() || this.searchService.isIndexingFailed()) {
       return;
     }
 
@@ -569,6 +570,12 @@ export default class ObsidianAssistant extends Plugin {
   // Immediately reindex all files that are scheduled for reindexing
   async reindexScheduledFiles(): Promise<void> {
     if (this.filesScheduledForReindex.size === 0) {
+      return;
+    }
+
+    // Don't reindex if indexing has failed
+    if (this.searchService.isIndexingFailed()) {
+      console.log('Skipping reindexing because previous indexing failed. Use "Reindex Now" button to reset.');
       return;
     }
 
