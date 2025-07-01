@@ -9,6 +9,7 @@ export interface LLMServiceConfig {
   serviceUrl: string;
   systemPrompt?: string;
   apiKey?: string;
+  maxContextLength?: number;
 }
 
 /**
@@ -111,11 +112,18 @@ export class LLMService {
       }));
 
       // Prepare request to Ollama API
-      const body = JSON.stringify({
+      const requestBody: Record<string, any> = {
         model: this.config.model,
         messages: ollamaMessages,
         stream: false,
-      });
+      };
+
+      // Set context_length if maxContextLength is provided
+      if (this.config.maxContextLength) {
+        requestBody.context_length = this.config.maxContextLength;
+      }
+
+      const body = JSON.stringify(requestBody);
       const response = await requestUrl({
         url: `${this.config.serviceUrl}/api/chat`,
         method: 'POST',
@@ -153,10 +161,17 @@ export class LLMService {
       }));
 
       // Prepare request to OpenAI API
-      const body = JSON.stringify({
+      const requestBody: Record<string, any> = {
         model: this.config.model,
         messages: openaiMessages,
-      });
+      };
+
+      // Set max_tokens if maxContextLength is provided
+      if (this.config.maxContextLength) {
+        requestBody.max_tokens = this.config.maxContextLength;
+      }
+
+      const body = JSON.stringify(requestBody);
 
       // Prepare headers with API key if provided
       const headers: Record<string, string> = {
@@ -208,6 +223,11 @@ export class LLMService {
           content: msg.content,
         })),
       };
+
+      // Set max_tokens_to_sample if maxContextLength is provided
+      if (this.config.maxContextLength) {
+        body.max_tokens_to_sample = this.config.maxContextLength;
+      }
 
       // Add system message as a system prompt if it exists
       if (systemMessage) {
