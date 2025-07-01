@@ -97,7 +97,7 @@ describe('LLMService', () => {
 
     // Expect the sendMessage call to throw an error
     await expect(llmService.sendMessage(messages)).rejects.toThrow(
-      'Ollama API error (500): Internal Server Error'
+      'Failed to get response from LLM: Failed to call Ollama API'
     );
   });
 

@@ -133,7 +133,7 @@ export class LLMService {
       console.error('Error calling Ollama:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error calling Ollama: ${errorMessage}`);
-      throw error;
+      throw new Error('Failed to call Ollama API', { cause: error });
     }
   }
 
@@ -182,7 +182,7 @@ export class LLMService {
       console.error('Error calling OpenAI:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error calling OpenAI: ${errorMessage}`);
-      throw error;
+      throw new Error('Failed to call OpenAI API', { cause: error });
     }
   }
 }

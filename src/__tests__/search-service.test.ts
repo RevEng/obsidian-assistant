@@ -452,7 +452,7 @@ describe('SearchService', () => {
 
     // Call indexFile and expect it to throw an error
     await expect(testSearchService.indexFile(mockFiles[0])).rejects.toThrow(
-      'Generic error occurred while reading file'
+      'Failed to index file test-file-path'
     );
 
     // Verify that insertMultiple was not called, which means indexing was stopped
@@ -495,7 +495,7 @@ describe('SearchService', () => {
 
     // Call initializeIndex and expect it to throw an error
     await expect(testSearchService.initializeIndex()).rejects.toThrow(
-      'Ollama embedding service error'
+      'Failed to initialize search index'
     );
 
     // Verify that the indexingFailed flag is set to true
@@ -509,12 +509,8 @@ describe('SearchService', () => {
     // Verify that only one of the files was processed
     // The exact order of processing might vary, so we check that exactly one file was processed
     const mockRead = mockApp.vault.read as jest.Mock;
-    const firstFileProcessed = mockRead.mock.calls.some(
-      (call: any[]) => call[0] === mockFiles[0]
-    );
-    const secondFileProcessed = mockRead.mock.calls.some(
-      (call: any[]) => call[0] === mockFiles[1]
-    );
+    const firstFileProcessed = mockRead.mock.calls.some((call: any[]) => call[0] === mockFiles[0]);
+    const secondFileProcessed = mockRead.mock.calls.some((call: any[]) => call[0] === mockFiles[1]);
 
     // Exactly one of the files should have been processed
     expect(firstFileProcessed || secondFileProcessed).toBe(true);

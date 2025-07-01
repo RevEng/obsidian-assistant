@@ -100,7 +100,7 @@ export class SearchService {
         // Check if the index has been dirty for more than 5 seconds
         if (this.isDirty && Date.now() - this.dirtyTimestamp > 5000) {
           console.log('Search index has been dirty for more than 5 seconds, saving...');
-          this.save().catch(error => {
+          this.save().catch((error) => {
             console.error('Error auto-saving search index:', error);
           });
         }
@@ -253,7 +253,7 @@ export class SearchService {
       this.indexingInProgress = false;
       this.indexingFailed = true;
       this.lastError = error instanceof Error ? error.message : String(error);
-      throw error;
+      throw new Error('Failed to initialize search index', { cause: error });
     }
   }
 
@@ -303,7 +303,7 @@ export class SearchService {
           console.error(`Error indexing file ${file.path}:`, error);
           this.indexingFailed = true;
           this.lastError = error instanceof Error ? error.message : String(error);
-          throw error;
+          throw new Error('Error indexing files', { cause: error });
         }
       }
 
@@ -316,7 +316,7 @@ export class SearchService {
     } catch (error) {
       console.error('Error indexing vault:', error);
       this.lastError = error instanceof Error ? error.message : String(error);
-      throw error;
+      throw new Error('Failed to index vault', { cause: error });
     }
   }
 
@@ -398,7 +398,7 @@ export class SearchService {
           } catch (error) {
             console.error(`Error generating embedding for chunk ${chunk.id}:`, error);
             // Rethrow the error to stop the indexing process
-            throw error;
+            throw new Error(`Failed to generate embedding for chunk ${chunk.id}`, { cause: error });
           }
         }
       }
@@ -415,7 +415,7 @@ export class SearchService {
       console.log(`Indexed file ${file.path} with ${chunks.length} chunks`);
     } catch (error) {
       console.error(`Error indexing file ${file.path}:`, error);
-      throw error;
+      throw new Error(`Failed to index file ${file.path}`, { cause: error });
     }
   }
 
@@ -710,7 +710,7 @@ export class SearchService {
       console.log('Reindexing completed successfully');
     } catch (error) {
       console.error('Error during reindexing:', error);
-      throw error;
+      throw new Error('Failed to reindex all documents', { cause: error });
     }
   }
 
@@ -750,7 +750,7 @@ export class SearchService {
       console.log('Search index saved successfully');
     } catch (error) {
       console.error('Error saving search index:', error);
-      throw error;
+      throw new Error('Failed to save search index', { cause: error });
     }
   }
 
@@ -807,7 +807,7 @@ export class SearchService {
 
     // Save the index if it's dirty
     if (this.isDirty && this.indexReady) {
-      this.save().catch(error => {
+      this.save().catch((error) => {
         console.error('Error saving index during cleanup:', error);
       });
     }

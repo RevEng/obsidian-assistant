@@ -52,7 +52,7 @@ export class EmbeddingService {
       console.error('Error getting document embedding:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error getting document embedding: ${errorMessage}`);
-      throw error;
+      throw new Error('Failed to get document embedding', { cause: error });
     }
   }
 
@@ -76,7 +76,7 @@ export class EmbeddingService {
       console.error('Error getting query embedding:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error getting query embedding: ${errorMessage}`);
-      throw error;
+      throw new Error('Failed to get query embedding', { cause: error });
     }
   }
 
