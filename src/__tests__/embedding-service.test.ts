@@ -1,7 +1,8 @@
 import { EmbeddingService, EmbeddingServiceConfig } from '../embedding-service';
+import { requestUrl } from 'obsidian';
 
-// Mock fetch
-global.fetch = jest.fn();
+// Mock requestUrl is already set up in __mocks__/obsidian.js
+jest.mock('obsidian');
 
 describe('EmbeddingService', () => {
   let embeddingService: EmbeddingService;
@@ -18,12 +19,13 @@ describe('EmbeddingService', () => {
     // Create a new instance for each test
     embeddingService = new EmbeddingService(mockConfig);
 
-    // Mock successful fetch response
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: true,
-      json: async () => ({
+    // Mock successful requestUrl response
+    (requestUrl as jest.Mock).mockResolvedValue({
+      status: 200,
+      text: '',
+      json: {
         embedding: [0.1, 0.2, 0.3, 0.4, 0.5],
-      }),
+      },
     });
   });
 
@@ -49,8 +51,9 @@ describe('EmbeddingService', () => {
     const text = 'This is a test document text';
     const embedding = await embeddingService.getDocumentEmbedding(text);
 
-    // Check that fetch was called with the correct parameters
-    expect(global.fetch).toHaveBeenCalledWith('http://localhost:11434/api/embeddings', {
+    // Check that requestUrl was called with the correct parameters
+    expect(requestUrl).toHaveBeenCalledWith({
+      url: 'http://localhost:11434/api/embeddings',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -70,8 +73,9 @@ describe('EmbeddingService', () => {
     const text = 'This is a test query text';
     const embedding = await embeddingService.getQueryEmbedding(text);
 
-    // Check that fetch was called with the correct parameters
-    expect(global.fetch).toHaveBeenCalledWith('http://localhost:11434/api/embeddings', {
+    // Check that requestUrl was called with the correct parameters
+    expect(requestUrl).toHaveBeenCalledWith({
+      url: 'http://localhost:11434/api/embeddings',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -88,11 +92,11 @@ describe('EmbeddingService', () => {
   });
 
   test('should handle API errors', async () => {
-    // Mock a failed fetch response
-    (global.fetch as jest.Mock).mockResolvedValue({
-      ok: false,
+    // Mock a failed requestUrl response
+    (requestUrl as jest.Mock).mockResolvedValue({
       status: 500,
-      text: async () => 'Internal Server Error',
+      text: 'Internal Server Error',
+      json: {},
     });
 
     const text = 'This is a test text';

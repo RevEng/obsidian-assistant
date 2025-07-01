@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian';
+import { Notice, requestUrl } from 'obsidian';
 
 /**
  * Interface for LLM service configuration
@@ -116,7 +116,8 @@ export class LLMService {
         messages: ollamaMessages,
         stream: false,
       });
-      const response = await fetch(`${this.config.serviceUrl}/api/chat`, {
+      const response = await requestUrl({
+        url: `${this.config.serviceUrl}/api/chat`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -124,12 +125,11 @@ export class LLMService {
         body: body,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+      if (response.status >= 400) {
+        throw new Error(`Ollama API error (${response.status}): ${response.text}`);
       }
 
-      const data = await response.json();
+      const data = response.json;
       return data.message?.content || 'No response from Ollama';
     } catch (error) {
       console.error('Error calling Ollama:', error);
@@ -167,18 +167,18 @@ export class LLMService {
         headers.Authorization = `Bearer ${this.config.apiKey}`;
       }
 
-      const response = await fetch(`${this.config.serviceUrl}/v1/chat/completions`, {
+      const response = await requestUrl({
+        url: `${this.config.serviceUrl}/v1/chat/completions`,
         method: 'POST',
         headers: headers,
         body: body,
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+      if (response.status >= 400) {
+        throw new Error(`OpenAI API error (${response.status}): ${response.text}`);
       }
 
-      const data = await response.json();
+      const data = response.json;
       return data.choices?.[0]?.message?.content || 'No response from OpenAI';
     } catch (error) {
       console.error('Error calling OpenAI:', error);
@@ -221,18 +221,18 @@ export class LLMService {
         'anthropic-version': '2023-06-01',
       };
 
-      const response = await fetch(`${this.config.serviceUrl}/v1/messages`, {
+      const response = await requestUrl({
+        url: `${this.config.serviceUrl}/v1/messages`,
         method: 'POST',
         headers: headers,
         body: JSON.stringify(body),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Claude API error (${response.status}): ${errorText}`);
+      if (response.status >= 400) {
+        throw new Error(`Claude API error (${response.status}): ${response.text}`);
       }
 
-      const data = await response.json();
+      const data = response.json;
       return data.content?.[0]?.text || 'No response from Claude';
     } catch (error) {
       console.error('Error calling Claude:', error);

@@ -5,7 +5,4 @@
 global.console.error = jest.fn();
 global.console.warn = jest.fn();
 
-// Mock fetch API
-global.fetch = jest.fn();
-
 // Add any other global mocks or setup needed for tests

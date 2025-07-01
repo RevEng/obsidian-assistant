@@ -1,7 +1,8 @@
 import { LLMService, LLMServiceConfig, ChatMessage } from '../llm-service';
+import { requestUrl } from 'obsidian';
 
-// Mock fetch globally
-global.fetch = jest.fn();
+// Mock requestUrl is already set up in __mocks__/obsidian.js
+jest.mock('obsidian');
 
 describe('LLMService', () => {
   let llmService: LLMService;
@@ -49,19 +50,20 @@ describe('LLMService', () => {
       },
     };
 
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      status: 200,
+      text: '',
+      json: mockResponse,
     });
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
     const response = await llmService.sendMessage(messages);
 
-    // Check that fetch was called with the correct arguments
-    expect(global.fetch).toHaveBeenCalledWith(
-      'http://localhost:11434/api/chat',
+    // Check that requestUrl was called with the correct arguments
+    expect(requestUrl).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: 'http://localhost:11434/api/chat',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -71,7 +73,7 @@ describe('LLMService', () => {
     );
 
     // Check that the body contains the correct data
-    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    const body = JSON.parse((requestUrl as jest.Mock).mock.calls[0][0].body);
     expect(body).toEqual({
       model: 'llama3',
       messages: [
@@ -87,10 +89,10 @@ describe('LLMService', () => {
 
   test('should handle API errors', async () => {
     // Mock error response
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: false,
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
       status: 500,
-      text: async () => 'Internal Server Error',
+      text: 'Internal Server Error',
+      json: {},
     });
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
@@ -103,7 +105,7 @@ describe('LLMService', () => {
 
   test('should handle network errors', async () => {
     // Mock network error
-    (global.fetch as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
+    (requestUrl as jest.Mock).mockRejectedValueOnce(new Error('Network error'));
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
@@ -119,9 +121,10 @@ describe('LLMService', () => {
       },
     };
 
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      status: 200,
+      text: '',
+      json: mockResponse,
     });
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Tell me about my notes' }];
@@ -131,7 +134,7 @@ describe('LLMService', () => {
     await llmService.sendMessage(messages, contextData);
 
     // Check that the body contains a single system message with both system prompt and context data
-    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    const body = JSON.parse((requestUrl as jest.Mock).mock.calls[0][0].body);
 
     // Find the system message
     const systemMessage = body.messages.find((msg: ChatMessage) => msg.role === 'system');
@@ -168,19 +171,20 @@ describe('LLMService', () => {
       type: 'message',
     };
 
-    (global.fetch as jest.Mock).mockResolvedValueOnce({
-      ok: true,
-      json: async () => mockResponse,
+    (requestUrl as jest.Mock).mockResolvedValueOnce({
+      status: 200,
+      text: '',
+      json: mockResponse,
     });
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
     const response = await claudeService.sendMessage(messages);
 
-    // Check that fetch was called with the correct arguments
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.anthropic.com/v1/messages',
+    // Check that requestUrl was called with the correct arguments
+    expect(requestUrl).toHaveBeenCalledWith(
       expect.objectContaining({
+        url: 'https://api.anthropic.com/v1/messages',
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,7 +196,7 @@ describe('LLMService', () => {
     );
 
     // Check that the body contains the correct data
-    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    const body = JSON.parse((requestUrl as jest.Mock).mock.calls[0][0].body);
     expect(body).toEqual({
       model: 'claude-3-opus-20240229',
       max_tokens: 4096,

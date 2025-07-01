@@ -1,4 +1,4 @@
-import { Notice } from 'obsidian';
+import { Notice, requestUrl } from 'obsidian';
 
 /**
  * Interface for embedding service configuration
@@ -97,7 +97,8 @@ export class EmbeddingService {
       input_type: inputType,
     });
 
-    const response = await fetch(`${this.config.serviceUrl}/api/embeddings`, {
+    const response = await requestUrl({
+      url: `${this.config.serviceUrl}/api/embeddings`,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -105,12 +106,11 @@ export class EmbeddingService {
       body: body,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Ollama API error (${response.status}): ${errorText}`);
+    if (response.status >= 400) {
+      throw new Error(`Ollama API error (${response.status}): ${response.text}`);
     }
 
-    const data = await response.json();
+    const data = response.json;
     return data.embedding || [];
   }
 
@@ -140,18 +140,18 @@ export class EmbeddingService {
       input_type: inputType,
     });
 
-    const response = await fetch(`${this.config.serviceUrl}/v1/embeddings`, {
+    const response = await requestUrl({
+      url: `${this.config.serviceUrl}/v1/embeddings`,
       method: 'POST',
       headers: headers,
       body: body,
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`OpenAI API error (${response.status}): ${errorText}`);
+    if (response.status >= 400) {
+      throw new Error(`OpenAI API error (${response.status}): ${response.text}`);
     }
 
-    const data = await response.json();
+    const data = response.json;
     return data.data?.[0]?.embedding || [];
   }
 

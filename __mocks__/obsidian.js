@@ -146,6 +146,15 @@ class TFile {
   }
 }
 
+// Mock requestUrl function
+const requestUrl = jest.fn().mockImplementation(async () => {
+  return {
+    status: 200,
+    text: '',
+    json: {},
+  };
+});
+
 // Export all mocks
 module.exports = {
   Plugin,
@@ -156,4 +165,5 @@ module.exports = {
   Setting,
   Notice,
   TFile,
+  requestUrl,
 };
