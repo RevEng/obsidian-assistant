@@ -731,7 +731,56 @@ export default class ObsidianAssistant extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    try {
+      this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+
+      // Validate LLM and embedding service settings
+      this.validateServiceSettings();
+    } catch (error) {
+      console.error('Error loading settings, resetting to defaults:', error);
+      new Notice('Error loading settings. Resetting to defaults.');
+      this.settings = Object.assign({}, DEFAULT_SETTINGS);
+    }
+  }
+
+  /**
+   * Validate LLM and embedding service settings
+   * Resets invalid settings to defaults with user notification
+   * Uses createLLMServiceConfig and createEmbeddingConfig functions for validation
+   */
+  private validateServiceSettings(): void {
+    // Validate LLM service settings
+    try {
+      // Attempt to create LLM service config to validate settings
+      createLLMServiceConfig(this.settings.llmServiceProvider, this.settings);
+    } catch (error) {
+      // If an error occurs, the settings are invalid
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Invalid LLM settings: ${errorMessage}`);
+      new Notice(`Invalid LLM settings: ${errorMessage}. Resetting to defaults.`);
+
+      // Reset LLM settings to defaults
+      this.settings.llmServiceProvider = DEFAULT_SETTINGS.llmServiceProvider;
+      this.settings.ollamaLLMConfig = DEFAULT_SETTINGS.ollamaLLMConfig;
+      this.settings.openaiLLMConfig = DEFAULT_SETTINGS.openaiLLMConfig;
+      this.settings.claudeLLMConfig = DEFAULT_SETTINGS.claudeLLMConfig;
+    }
+
+    // Validate embedding service settings
+    try {
+      // Attempt to create embedding config to validate settings
+      createEmbeddingConfig(this.settings.embeddingServiceProvider, this.settings);
+    } catch (error) {
+      // If an error occurs, the settings are invalid
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error(`Invalid embedding settings: ${errorMessage}`);
+      new Notice(`Invalid embedding settings: ${errorMessage}. Resetting to defaults.`);
+
+      // Reset embedding settings to defaults
+      this.settings.embeddingServiceProvider = DEFAULT_SETTINGS.embeddingServiceProvider;
+      this.settings.ollamaEmbeddingConfig = DEFAULT_SETTINGS.ollamaEmbeddingConfig;
+      this.settings.openaiEmbeddingConfig = DEFAULT_SETTINGS.openaiEmbeddingConfig;
+    }
   }
 
   async saveSettings() {
