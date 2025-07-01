@@ -479,6 +479,7 @@ class ChatView extends ItemView {
 }
 
 // Main plugin class
+// noinspection JSUnusedGlobalSymbols
 export default class ObsidianAssistant extends Plugin {
   settings: ObsidianAssistantSettings = DEFAULT_SETTINGS;
   searchService!: SearchService;
@@ -589,10 +590,11 @@ export default class ObsidianAssistant extends Plugin {
 
     // Set a new timeout to reindex the file after the cooldown period
     const timeout = setTimeout(() => {
-      this.searchService.indexFile(file);
-      this.fileReindexTimeouts.delete(filePath);
-      this.filesScheduledForReindex.delete(file);
-      console.log(`Reindexed file ${filePath} after cooldown period`);
+      this.searchService.indexFile(file).then(() => {
+        this.fileReindexTimeouts.delete(filePath);
+        this.filesScheduledForReindex.delete(file);
+        console.log(`Reindexed file ${filePath} after cooldown period`);
+      });
     }, fileEditedCooldownPeriod * 1000);
 
     this.fileReindexTimeouts.set(filePath, timeout);
@@ -619,7 +621,7 @@ export default class ObsidianAssistant extends Plugin {
     }
 
     // Reveal the leaf
-    workspace.revealLeaf(leaf);
+    await workspace.revealLeaf(leaf);
   }
 
   onunload() {
