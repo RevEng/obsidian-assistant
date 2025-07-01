@@ -658,6 +658,9 @@ export default class ObsidianAssistant extends Plugin {
     }
     this.fileReindexTimeouts.clear();
     this.filesScheduledForReindex.clear();
+
+    // Stop any timers in the search service
+    this.searchService.cleanup();
   }
 
   // Immediately reindex all files that are scheduled for reindexing

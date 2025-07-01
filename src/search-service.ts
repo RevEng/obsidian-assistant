@@ -105,9 +105,6 @@ export class SearchService {
           });
         }
       }, 1000); // Check every second
-
-      // Use unref to allow the Node.js process to exit even if the timer is still active
-      this.saveTimer.unref();
     }
   }
 
