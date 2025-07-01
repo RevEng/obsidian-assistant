@@ -166,6 +166,8 @@ export class SearchService {
         return;
       }
 
+      this.indexingFailed = false;
+      this.indexReady = false;
       this.indexingInProgress = true;
       this.lastError = '';
       console.log('Initializing Orama search index');
@@ -190,7 +192,6 @@ export class SearchService {
 
       this.indexReady = true;
       this.indexingInProgress = false;
-      this.indexingFailed = false;
       console.log('Orama search index initialized');
     } catch (error) {
       console.error('Error initializing search index:', error);
@@ -218,10 +219,22 @@ export class SearchService {
 
       for (const file of markdownFiles) {
         this.currentFileIndex++;
-        await this.indexFile(file);
+        try {
+          await this.indexFile(file);
+          // Check if indexing has failed after each file
+          if (this.indexingFailed) {
+            console.log('Stopping indexing due to previous error');
+            break;
+          }
+        } catch (error) {
+          console.error(`Error indexing file ${file.path}:`, error);
+          this.indexingFailed = true;
+          this.lastError = error instanceof Error ? error.message : String(error);
+          throw error;
+        }
       }
 
-      console.log(`Indexed ${markdownFiles.length} files`);
+      console.log(`Indexed ${this.currentFileIndex - 1} files`);
     } catch (error) {
       console.error('Error indexing vault:', error);
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -236,6 +249,10 @@ export class SearchService {
   async indexFile(file: TFile): Promise<void> {
     if (!this.index) {
       throw new Error('Search index not initialized');
+    }
+
+    if (this.indexingFailed) {
+      return;
     }
 
     try {
@@ -289,7 +306,8 @@ export class SearchService {
             this.documentEmbeddings.set(chunk.id, embedding);
           } catch (error) {
             console.error(`Error generating embedding for chunk ${chunk.id}:`, error);
-            // Continue with other chunks even if embedding fails for one
+            // Rethrow the error to stop the indexing process
+            throw error;
           }
         }
       }
@@ -300,7 +318,7 @@ export class SearchService {
       console.log(`Indexed file ${file.path} with ${chunks.length} chunks`);
     } catch (error) {
       console.error(`Error indexing file ${file.path}:`, error);
-      // Continue with other files even if one fails
+      throw error;
     }
   }
 

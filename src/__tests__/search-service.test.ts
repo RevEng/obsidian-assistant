@@ -28,7 +28,8 @@ jest.mock('../embedding-service', () => {
   return {
     EmbeddingService: jest.fn().mockImplementation(() => {
       return {
-        getEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+        getDocumentEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
+        getQueryEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3, 0.4, 0.5]),
         cosineSimilarity: jest.fn().mockReturnValue(0.85),
         updateConfig: jest.fn(),
       };
@@ -352,5 +353,88 @@ describe('SearchService', () => {
 
     // Verify that insertMultiple was called to add the new chunks
     expect(insertMultiple).toHaveBeenCalled();
+  });
+
+  test('should stop indexing when error occurs', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(
+      mockApp,
+      { chunkSize: 1000, chunkOverlap: 200 }
+    );
+
+    // Mock the index property directly
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-error-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Set up the search mock to return no existing chunks
+    (search as jest.Mock).mockResolvedValue({ hits: [] });
+
+    // Mock the app.vault.read method to throw a generic error
+    (mockApp.vault.read as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('Generic error occurred while reading file');
+    });
+
+    // Call indexFile and expect it to throw an error
+    await expect(testSearchService.indexFile(mockFiles[0])).rejects.toThrow(
+      'Generic error occurred while reading file'
+    );
+
+    // Verify that insertMultiple was not called, which means indexing was stopped
+    expect(insertMultiple).not.toHaveBeenCalled();
+  });
+
+  test('should stop indexing all files when error occurs in embedding service', async () => {
+    // Create a new instance of SearchService with vector search enabled
+    const embeddingConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
+      serviceUrl: 'http://localhost:11434',
+      model: 'nomic-embed-text',
+    };
+
+    const testSearchService = new SearchService(
+      mockApp,
+      { chunkSize: 1000, chunkOverlap: 200 },
+      embeddingConfig,
+      true
+    );
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Mock the create function to return a mock index
+    (create as jest.Mock).mockResolvedValue({ id: 'mock-index-for-embedding-error-test' });
+
+    // Set up the search mock to return no existing chunks
+    (search as jest.Mock).mockResolvedValue({ hits: [] });
+
+    // Mock the EmbeddingService.getDocumentEmbedding to throw an error on the first call
+    const mockEmbeddingService = new EmbeddingService(embeddingConfig);
+    (mockEmbeddingService.getDocumentEmbedding as jest.Mock).mockImplementationOnce(() => {
+      throw new Error('Ollama embedding service error');
+    });
+
+    // Replace the embedding service in the search service with our mock
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).embeddingService = mockEmbeddingService;
+
+    // Call initializeIndex and expect it to throw an error
+    await expect(testSearchService.initializeIndex()).rejects.toThrow('Ollama embedding service error');
+
+    // Verify that the indexingFailed flag is set to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).indexingFailed).toBe(true);
+
+    // Verify that app.vault.read was called only once (for the first file)
+    // This confirms that indexing stopped after the first file
+    expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
+    expect(mockApp.vault.read).toHaveBeenCalledWith(mockFiles[0]);
+
+    // Verify that it never tried to read the second file
+    expect(mockApp.vault.read).not.toHaveBeenCalledWith(mockFiles[1]);
   });
 });
