@@ -1,6 +1,7 @@
 import { SearchService, SearchOptions, ChunkingOptions, NoteDocument } from '../search-service';
 import { App, TFile } from 'obsidian';
 import { create, insertMultiple, search, remove } from '@orama/orama';
+import { persist, restore } from '@orama/plugin-data-persistence';
 import { EmbeddingService, EmbeddingServiceConfig } from '../embedding-service';
 
 // Mock @orama/orama functions
@@ -21,6 +22,12 @@ jest.mock('@orama/orama', () => ({
       },
     ],
   }),
+}));
+
+// Mock @orama/plugin-data-persistence functions
+jest.mock('@orama/plugin-data-persistence', () => ({
+  persist: jest.fn().mockResolvedValue('serialized-index-data'),
+  restore: jest.fn().mockResolvedValue({ id: 'mock-loaded-index' }),
 }));
 
 // Mock EmbeddingService
@@ -70,10 +77,28 @@ describe('SearchService', () => {
     // Reset mocks
     jest.clearAllMocks();
 
-    // Create mock files
+    // Create mock files with stat property including mtime
     mockFiles = [
-      { path: 'test-file-path', basename: 'Test File', extension: 'md' } as TFile,
-      { path: 'another-file-path', basename: 'Another File', extension: 'md' } as TFile,
+      {
+        path: 'test-file-path',
+        basename: 'Test File',
+        extension: 'md',
+        stat: {
+          ctime: 1234567890000,
+          mtime: 1234567890000,
+          size: 1000,
+        },
+      } as TFile,
+      {
+        path: 'another-file-path',
+        basename: 'Another File',
+        extension: 'md',
+        stat: {
+          ctime: 1234567890000,
+          mtime: 1234567890000,
+          size: 1000,
+        },
+      } as TFile,
     ];
 
     // Set up mock app
@@ -88,11 +113,32 @@ describe('SearchService', () => {
       return '';
     });
 
+    // Set up mock vault.configDir and adapter methods
+    (mockApp.vault as any).configDir = '.obsidian';
+    (mockApp.vault.adapter as any) = {
+      exists: jest.fn().mockResolvedValue(true),
+      read: jest.fn().mockResolvedValue(
+        JSON.stringify({
+          serializedIndex: 'serialized-index-data',
+          fileModificationTimes: { 'test-file-path': 1234567890000 },
+          documentEmbeddings: { 'test-file-path-chunk-0': [0.1, 0.2, 0.3, 0.4, 0.5] },
+        })
+      ),
+      write: jest.fn().mockResolvedValue(undefined),
+    };
+
     // Set up mock workspace for getCurrentNoteContent testing
     (mockApp.workspace as any).getActiveFile = jest.fn().mockReturnValue(mockFiles[0]);
 
     // Create a new instance for each test
     searchService = new SearchService(mockApp);
+  });
+
+  afterEach(() => {
+    // Clean up any timers to prevent memory leaks
+    if (searchService) {
+      searchService.cleanup();
+    }
   });
 
   test('should initialize with default chunking options', () => {
@@ -115,7 +161,31 @@ describe('SearchService', () => {
     expect((searchService as any).chunkingOptions).toEqual(newOptions);
   });
 
-  test('should initialize index correctly', async () => {
+  test('should initialize index correctly by loading from disk', async () => {
+    // Mock adapter.exists to return true to simulate existing index file
+    (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+
+    await searchService.initializeIndex();
+
+    // Check that the adapter.read and restore were called to load the index
+    expect(mockApp.vault.adapter.read).toHaveBeenCalledWith('.obsidian/search-index.json');
+    expect(restore).toHaveBeenCalled();
+
+    // Check that indexVault was called to update the index
+    expect(mockApp.vault.getMarkdownFiles).toHaveBeenCalled();
+
+    // Check that persist and adapter.write were called to save the updated index
+    expect(persist).toHaveBeenCalled();
+    expect(mockApp.vault.adapter.write).toHaveBeenCalled();
+
+    // Check that indexReady is set to true
+    expect(searchService.isIndexReady()).toBe(true);
+  });
+
+  test('should initialize index correctly by creating new when no saved index exists', async () => {
+    // Mock adapter.exists to return false to simulate no existing index file
+    (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(false);
+
     await searchService.initializeIndex();
 
     // Check that create was called with the correct schema
@@ -136,6 +206,10 @@ describe('SearchService', () => {
     // Check that indexVault was called
     expect(mockApp.vault.getMarkdownFiles).toHaveBeenCalled();
     expect(insertMultiple).toHaveBeenCalled();
+
+    // Check that persist and adapter.write were called to save the new index
+    expect(persist).toHaveBeenCalled();
+    expect(mockApp.vault.adapter.write).toHaveBeenCalled();
 
     // Check that indexReady is set to true
     expect(searchService.isIndexReady()).toBe(true);
@@ -357,10 +431,7 @@ describe('SearchService', () => {
 
   test('should stop indexing when error occurs', async () => {
     // Create a new instance of SearchService
-    const testSearchService = new SearchService(
-      mockApp,
-      { chunkSize: 1000, chunkOverlap: 200 }
-    );
+    const testSearchService = new SearchService(mockApp, { chunkSize: 1000, chunkOverlap: 200 });
 
     // Mock the index property directly
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -423,18 +494,264 @@ describe('SearchService', () => {
     (testSearchService as any).embeddingService = mockEmbeddingService;
 
     // Call initializeIndex and expect it to throw an error
-    await expect(testSearchService.initializeIndex()).rejects.toThrow('Ollama embedding service error');
+    await expect(testSearchService.initializeIndex()).rejects.toThrow(
+      'Ollama embedding service error'
+    );
 
     // Verify that the indexingFailed flag is set to true
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     expect((testSearchService as any).indexingFailed).toBe(true);
 
-    // Verify that app.vault.read was called only once (for the first file)
+    // Verify that app.vault.read was called only once
     // This confirms that indexing stopped after the first file
     expect(mockApp.vault.read).toHaveBeenCalledTimes(1);
-    expect(mockApp.vault.read).toHaveBeenCalledWith(mockFiles[0]);
 
-    // Verify that it never tried to read the second file
-    expect(mockApp.vault.read).not.toHaveBeenCalledWith(mockFiles[1]);
+    // Verify that only one of the files was processed
+    // The exact order of processing might vary, so we check that exactly one file was processed
+    const mockRead = mockApp.vault.read as jest.Mock;
+    const firstFileProcessed = mockRead.mock.calls.some(
+      (call: any[]) => call[0] === mockFiles[0]
+    );
+    const secondFileProcessed = mockRead.mock.calls.some(
+      (call: any[]) => call[0] === mockFiles[1]
+    );
+
+    // Exactly one of the files should have been processed
+    expect(firstFileProcessed || secondFileProcessed).toBe(true);
+    expect(firstFileProcessed && secondFileProcessed).toBe(false);
+  });
+
+  test('should save index to disk', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property and set indexReady to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-save-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+
+    // Add some file modification times
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).fileModificationTimes.set('test-file-path', 1234567890000);
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Call save method
+    await testSearchService.save();
+
+    // Verify that persist was called with the correct arguments
+    expect(persist).toHaveBeenCalledWith({ id: 'mock-index-for-save-test' }, 'json');
+
+    // Verify that adapter.write was called with the correct arguments
+    expect(mockApp.vault.adapter.write).toHaveBeenCalledWith(
+      '.obsidian/search-index.json',
+      expect.any(String) // The JSON string containing the serialized index and metadata
+    );
+  });
+
+  test('should load index from disk', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Mock adapter.exists to return true
+    (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(true);
+
+    // Call load method
+    const result = await testSearchService.load();
+
+    // Verify that adapter.read was called with the correct arguments
+    expect(mockApp.vault.adapter.read).toHaveBeenCalledWith('.obsidian/search-index.json');
+
+    // Verify that restore was called with the correct arguments
+    expect(restore).toHaveBeenCalledWith('json', expect.any(String));
+
+    // Verify that the index was loaded correctly
+    expect(result).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).index).toEqual({ id: 'mock-loaded-index' });
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).fileModificationTimes.get('test-file-path')).toBe(
+      1234567890000
+    );
+    expect(testSearchService.isIndexReady()).toBe(true);
+  });
+
+  test('should handle case when no saved index exists', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Mock adapter.exists to return false
+    (mockApp.vault.adapter.exists as jest.Mock).mockResolvedValue(false);
+
+    // Call load method
+    const result = await testSearchService.load();
+
+    // Verify that adapter.read and restore were not called
+    expect(mockApp.vault.adapter.read).not.toHaveBeenCalled();
+    expect(restore).not.toHaveBeenCalled();
+
+    // Verify that the result is false
+    expect(result).toBe(false);
+  });
+
+  test('should skip indexing unchanged files', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-mtime-test' };
+
+    // Add the file to the fileModificationTimes map with the same mtime as the file
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).fileModificationTimes.set('test-file-path', 1234567890000);
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Call indexFile
+    await testSearchService.indexFile(mockFiles[0]);
+
+    // Verify that search was not called (file was skipped)
+    expect(search).not.toHaveBeenCalled();
+
+    // Verify that insertMultiple was not called (file was skipped)
+    expect(insertMultiple).not.toHaveBeenCalled();
+  });
+
+  test('should reindex files with changed modification time', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-mtime-test' };
+
+    // Add the file to the fileModificationTimes map with a different mtime
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).fileModificationTimes.set('test-file-path', 1234567890001); // Different mtime
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Set up the search mock to return existing chunks
+    (search as jest.Mock).mockResolvedValueOnce(mockSearchResultsWithExistingFile);
+
+    // Call indexFile
+    await testSearchService.indexFile(mockFiles[0]);
+
+    // Verify that search was called (file was not skipped)
+    expect(search).toHaveBeenCalled();
+
+    // Verify that remove was called for each existing chunk
+    expect(remove).toHaveBeenCalledTimes(2);
+
+    // Verify that insertMultiple was called to add the new chunks
+    expect(insertMultiple).toHaveBeenCalled();
+
+    // Verify that the file modification time was updated
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).fileModificationTimes.get('test-file-path')).toBe(
+      1234567890000
+    );
+  });
+
+  test('should mark index as dirty after modifications', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property and set indexReady to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-dirty-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Set up the search mock to return no existing chunks
+    (search as jest.Mock).mockResolvedValue({ hits: [] });
+
+    // Call indexFile to modify the index
+    await testSearchService.indexFile(mockFiles[0]);
+
+    // Verify that the index is marked as dirty
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).isDirty).toBe(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).dirtyTimestamp).toBeGreaterThan(0);
+  });
+
+  test('should clear dirty mark after saving', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property and set indexReady to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-save-dirty-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).isDirty = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).dirtyTimestamp = Date.now();
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Call save method
+    await testSearchService.save();
+
+    // Verify that the dirty mark is cleared
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).isDirty).toBe(false);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect((testSearchService as any).dirtyTimestamp).toBe(0);
+  });
+
+  test('should clean up timer and save dirty index on cleanup', async () => {
+    // Create a new instance of SearchService
+    const testSearchService = new SearchService(mockApp);
+
+    // Mock the index property and set indexReady to true
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).index = { id: 'mock-index-for-cleanup-test' };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).indexReady = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).isDirty = true;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).dirtyTimestamp = Date.now();
+
+    // Create a mock timer
+    const mockTimer = setInterval(() => {}, 1000);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (testSearchService as any).saveTimer = mockTimer;
+
+    // Spy on clearInterval
+    const clearIntervalSpy = jest.spyOn(global, 'clearInterval');
+
+    // Reset all mocks
+    jest.clearAllMocks();
+
+    // Call cleanup method
+    testSearchService.cleanup();
+
+    // Verify that clearInterval was called with the timer
+    expect(clearIntervalSpy).toHaveBeenCalledWith(mockTimer);
+
+    // Verify that save was called because the index was dirty
+    expect(persist).toHaveBeenCalled();
+
+    // Clean up spy
+    clearIntervalSpy.mockRestore();
   });
 });

@@ -1,5 +1,6 @@
 import { App, TFile } from 'obsidian';
 import { create, insertMultiple, search, remove } from '@orama/orama';
+import { persist, restore } from '@orama/plugin-data-persistence';
 import { EmbeddingService, EmbeddingServiceConfig } from './embedding-service';
 
 /**
@@ -47,6 +48,11 @@ export class SearchService {
   private currentFileIndex = 0;
   private totalFiles = 0;
   private lastError: string = '';
+  private fileModificationTimes: Map<string, number> = new Map();
+  private indexFilePath: string = '';
+  private isDirty = false;
+  private dirtyTimestamp = 0;
+  private saveTimer: NodeJS.Timeout | null = null;
 
   /**
    * Constructor
@@ -67,9 +73,40 @@ export class SearchService {
     this.useVectorSearch = useVectorSearch;
     this.maxSearchResults = maxSearchResults;
 
+    // Set the index file path in the .obsidian directory
+    this.indexFilePath = `${this.app.vault.configDir}/search-index.json`;
+
     // Initialize embedding service if config is provided
     if (embeddingConfig) {
       this.embeddingService = new EmbeddingService(embeddingConfig);
+    }
+  }
+
+  /**
+   * Mark the index as dirty and set up a timer to save it
+   * @private
+   */
+  private markDirty(): void {
+    if (!this.isDirty) {
+      this.isDirty = true;
+      this.dirtyTimestamp = Date.now();
+      console.log('Search index marked as dirty');
+    }
+
+    // If there's no timer running, set one up
+    if (!this.saveTimer) {
+      this.saveTimer = setInterval(() => {
+        // Check if the index has been dirty for more than 5 seconds
+        if (this.isDirty && Date.now() - this.dirtyTimestamp > 5000) {
+          console.log('Search index has been dirty for more than 5 seconds, saving...');
+          this.save().catch(error => {
+            console.error('Error auto-saving search index:', error);
+          });
+        }
+      }, 1000); // Check every second
+
+      // Use unref to allow the Node.js process to exit even if the timer is still active
+      this.saveTimer.unref();
     }
   }
 
@@ -172,26 +209,43 @@ export class SearchService {
       this.lastError = '';
       console.log('Initializing Orama search index');
 
-      // Create a new index
-      this.index = await create({
-        schema: {
-          id: 'string',
-          title: 'string',
-          content: 'string',
-          path: 'string',
-        },
-        components: {
-          tokenizer: {
-            stemming: true,
-          },
-        },
-      });
+      // Try to load the index from disk first
+      const loaded = await this.load();
 
-      // Index all markdown files in the vault
-      await this.indexVault();
+      // If loading failed, create a new index
+      if (!loaded) {
+        console.log('Creating a new search index');
+        this.index = await create({
+          schema: {
+            id: 'string',
+            title: 'string',
+            content: 'string',
+            path: 'string',
+          },
+          components: {
+            tokenizer: {
+              stemming: true,
+            },
+          },
+        });
+
+        // Mark the index as dirty after creation
+        this.markDirty();
+
+        // Index all markdown files in the vault
+        await this.indexVault();
+      } else {
+        // If we loaded the index, check for any new or modified files
+        console.log('Checking for new or modified files');
+        await this.indexVault();
+      }
 
       this.indexReady = true;
       this.indexingInProgress = false;
+
+      // Save the index to disk
+      await this.save();
+
       console.log('Orama search index initialized');
     } catch (error) {
       console.error('Error initializing search index:', error);
@@ -216,11 +270,29 @@ export class SearchService {
       const markdownFiles = this.app.vault.getMarkdownFiles();
       this.totalFiles = markdownFiles.length;
       this.currentFileIndex = 0;
+      let filesIndexed = 0;
 
       for (const file of markdownFiles) {
         this.currentFileIndex++;
         try {
+          // Track the number of files before indexing
+          const beforeSize = this.fileModificationTimes.size;
+
           await this.indexFile(file);
+
+          // If a new file was indexed or an existing file was updated
+          if (
+            beforeSize !== this.fileModificationTimes.size ||
+            this.fileModificationTimes.get(file.path) === file.stat.mtime
+          ) {
+            filesIndexed++;
+
+            // Save the index periodically (every 20 files)
+            if (filesIndexed % 20 === 0) {
+              await this.save();
+            }
+          }
+
           // Check if indexing has failed after each file
           if (this.indexingFailed) {
             console.log('Stopping indexing due to previous error');
@@ -234,7 +306,12 @@ export class SearchService {
         }
       }
 
-      console.log(`Indexed ${this.currentFileIndex - 1} files`);
+      // Save the index after all files have been processed
+      if (filesIndexed > 0 && !this.indexingFailed) {
+        await this.save();
+      }
+
+      console.log(`Indexed ${filesIndexed} files out of ${markdownFiles.length} total files`);
     } catch (error) {
       console.error('Error indexing vault:', error);
       this.lastError = error instanceof Error ? error.message : String(error);
@@ -256,6 +333,16 @@ export class SearchService {
     }
 
     try {
+      // Get the file's last modified time
+      const currentMtime = file.stat.mtime;
+
+      // Check if the file is already indexed and if its modification time hasn't changed
+      const lastMtime = this.fileModificationTimes.get(file.path);
+      if (lastMtime && lastMtime === currentMtime) {
+        console.log(`File ${file.path} hasn't changed since last indexing, skipping`);
+        return;
+      }
+
       // Check if the file already exists in the index by searching for its path
       const searchResults = await search(this.index, {
         term: file.path,
@@ -265,7 +352,7 @@ export class SearchService {
 
       // If the file already exists in the index, remove all its chunks
       if (searchResults.hits.length > 0) {
-        console.log(`File ${file.path} already exists in the index. Removing existing chunks...`);
+        console.log(`File ${file.path} has changed, removing existing chunks...`);
 
         // Remove each chunk from the index
         for (const hit of searchResults.hits) {
@@ -277,6 +364,9 @@ export class SearchService {
             this.documentEmbeddings.delete(document.id);
           }
         }
+
+        // Mark the index as dirty after removing chunks
+        this.markDirty();
 
         console.log(`Removed ${searchResults.hits.length} existing chunks for file ${file.path}`);
       }
@@ -314,6 +404,12 @@ export class SearchService {
 
       // Insert chunks into the index
       await insertMultiple(this.index, chunks);
+
+      // Update the file modification time in our map
+      this.fileModificationTimes.set(file.path, currentMtime);
+
+      // Mark the index as dirty
+      this.markDirty();
 
       console.log(`Indexed file ${file.path} with ${chunks.length} chunks`);
     } catch (error) {
@@ -601,7 +697,11 @@ export class SearchService {
       // Reset state
       this.indexReady = false;
       this.documentEmbeddings.clear();
+      this.fileModificationTimes.clear();
       this.indexingFailed = false;
+
+      // Mark the index as dirty
+      this.markDirty();
 
       // Initialize a new index (this will clear the old one)
       await this.initializeIndex();
@@ -610,6 +710,105 @@ export class SearchService {
     } catch (error) {
       console.error('Error during reindexing:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Save the search index to disk
+   * @returns Promise that resolves when the index is saved
+   */
+  async save(): Promise<void> {
+    if (!this.index || !this.indexReady) {
+      console.warn('Cannot save index: index not ready');
+      return;
+    }
+
+    try {
+      console.log(`Saving search index to ${this.indexFilePath}...`);
+
+      // Serialize the index to a JSON-formatted string
+      const serializedIndex = await persist(this.index, 'json');
+
+      // Create an object with both the serialized index and the file modification times
+      const dataToSave = {
+        serializedIndex,
+        fileModificationTimes: Object.fromEntries(this.fileModificationTimes),
+        documentEmbeddings: this.useVectorSearch ? Object.fromEntries(this.documentEmbeddings) : {},
+      };
+
+      // Convert the object to a JSON string
+      const jsonData = JSON.stringify(dataToSave);
+
+      // Write the data to a file using Obsidian's API
+      await this.app.vault.adapter.write(this.indexFilePath, jsonData);
+
+      // Clear the dirty mark after saving
+      this.isDirty = false;
+      this.dirtyTimestamp = 0;
+
+      console.log('Search index saved successfully');
+    } catch (error) {
+      console.error('Error saving search index:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Load the search index from disk
+   * @returns Promise that resolves when the index is loaded
+   */
+  async load(): Promise<boolean> {
+    try {
+      console.log(`Loading search index from ${this.indexFilePath}...`);
+
+      // Check if the index file exists
+      const exists = await this.app.vault.adapter.exists(this.indexFilePath);
+      if (!exists) {
+        console.log('No saved index found, creating a new one');
+        return false;
+      }
+
+      // Read the data from the file using Obsidian's API
+      const jsonData = await this.app.vault.adapter.read(this.indexFilePath);
+
+      // Parse the JSON string to an object
+      const parsedData = JSON.parse(jsonData);
+
+      // Restore the index using the serialized data
+      this.index = await restore('json', parsedData.serializedIndex);
+
+      // Extract the file modification times
+      this.fileModificationTimes = new Map(Object.entries(parsedData.fileModificationTimes));
+
+      // Restore document embeddings if vector search is enabled
+      if (this.useVectorSearch && parsedData.documentEmbeddings) {
+        this.documentEmbeddings = new Map(Object.entries(parsedData.documentEmbeddings));
+      }
+
+      this.indexReady = true;
+      console.log('Search index loaded successfully');
+      return true;
+    } catch (error) {
+      console.error('Error loading search index:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Clean up resources used by the search service
+   */
+  cleanup(): void {
+    // Clear the save timer if it exists
+    if (this.saveTimer) {
+      clearInterval(this.saveTimer);
+      this.saveTimer = null;
+    }
+
+    // Save the index if it's dirty
+    if (this.isDirty && this.indexReady) {
+      this.save().catch(error => {
+        console.error('Error saving index during cleanup:', error);
+      });
     }
   }
 }
