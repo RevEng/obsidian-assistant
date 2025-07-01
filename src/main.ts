@@ -555,6 +555,31 @@ export default class ObsidianAssistant extends Plugin {
       },
     });
 
+    // Add command to summarize the current note
+    this.addCommand({
+      id: 'summarize-current-note',
+      name: 'Summarize Current Note',
+      callback: () => {
+        this.summarizeCurrentNote();
+      },
+    });
+
+    // Register event for file menu (context menu for file tabs)
+    this.registerEvent(
+      this.app.workspace.on('file-menu', (menu, file) => {
+        if (file instanceof TFile && file.extension === 'md') {
+          menu.addItem((item) => {
+            item
+              .setTitle('Summarize Note')
+              .setIcon('text-cursor-input')
+              .onClick(() => {
+                this.summarizeCurrentNote(file);
+              });
+          });
+        }
+      })
+    );
+
     // Add settings tab
     this.addSettingTab(new ObsidianAssistantSettingTab(this.app, this));
   }
@@ -698,6 +723,80 @@ export default class ObsidianAssistant extends Plugin {
 
       // Update max search results when settings change
       this.searchService.updateMaxSearchResults(this.settings.maxSearchResults);
+    }
+  }
+
+  /**
+   * Summarize the current note using the LLM service
+   * @param specificFile - Optional specific file to summarize (if not provided, uses active file)
+   */
+  async summarizeCurrentNote(specificFile?: TFile): Promise<void> {
+    try {
+      // Get the file to summarize (either the provided file or the active file)
+      const file = specificFile || this.app.workspace.getActiveFile();
+
+      if (!file || file.extension !== 'md') {
+        new Notice('No markdown file is currently active');
+        return;
+      }
+
+      // Activate the chat view
+      await this.activateView();
+
+      // Get the chat view
+      const chatView = this.app.workspace.getLeavesOfType(VIEW_TYPE_CHAT)[0]?.view as ChatView;
+
+      if (!chatView) {
+        new Notice('Failed to open chat view');
+        return;
+      }
+
+      // Clear the chat history, add the message, and send it
+      // We need to access the DOM elements directly since we don't have public methods for these operations
+      const container = chatView.containerEl.children[1];
+      const chatContainer = container.querySelector('.obsidian-assistant-chat-container');
+      const messagesContainer = chatContainer?.querySelector('.obsidian-assistant-messages');
+      const inputEl = chatContainer?.querySelector(
+        '.obsidian-assistant-input'
+      ) as HTMLTextAreaElement;
+      const sendButton = chatContainer?.querySelector('button') as HTMLButtonElement;
+
+      if (!messagesContainer || !inputEl || !sendButton) {
+        new Notice('Failed to interact with chat view');
+        return;
+      }
+
+      // Set the "Use current note" radio button
+      const useCurrentNoteCheckbox = chatContainer?.querySelector(
+        '#use-current-note'
+      ) as HTMLInputElement;
+      if (useCurrentNoteCheckbox) {
+        useCurrentNoteCheckbox.checked = true;
+
+        // Trigger the change event to update settings
+        const event = new Event('change');
+        useCurrentNoteCheckbox.dispatchEvent(event);
+      }
+
+      // Clear chat history by clicking the clear button
+      const clearButton = chatContainer?.querySelector(
+        '.obsidian-assistant-clear-button'
+      ) as HTMLButtonElement;
+      if (clearButton) {
+        clearButton.click();
+      }
+
+      // Set the input value to the summarize prompt without including the note content
+      inputEl.value = 'Please summarize this document.';
+
+      // Send the message by clicking the send button
+      sendButton.click();
+
+    } catch (error) {
+      console.error('Error summarizing note:', error);
+      new Notice(
+        `Error summarizing note: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 }
