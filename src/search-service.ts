@@ -94,17 +94,32 @@ export class SearchService {
       console.log('Search index marked as dirty');
     }
 
-    // If there's no timer running, set one up
+    // If no save timer is running, set up a timer to save the index
     if (!this.saveTimer) {
       this.saveTimer = setInterval(() => {
         // Check if the index has been dirty for more than 5 seconds
         if (this.isDirty && Date.now() - this.dirtyTimestamp > 5000) {
           console.log('Search index has been dirty for more than 5 seconds, saving...');
-          this.save().catch((error) => {
-            console.error('Error auto-saving search index:', error);
-          });
+
+          // Check if the index is ready to save
+          if (this.index && this.indexReady) {
+            this.save().catch((error) => {
+              console.error('Error auto-saving search index:', error);
+            });
+          } else {
+            // If the index is not ready to save, restart the saveTimer
+            if (this.saveTimer) {
+              clearInterval(this.saveTimer);
+              this.saveTimer = null;
+            }
+            this.markDirty(); // This will set up a new timer
+          }
         }
       }, 1000); // Check every second
+      // Unref the timer to allow the process to exit if needed, but only if running in Node.js
+      if (typeof this.saveTimer.unref === 'function') {
+        this.saveTimer.unref();
+      }
     }
   }
 
@@ -227,9 +242,6 @@ export class SearchService {
           },
         });
 
-        // Mark the index as dirty after creation
-        this.markDirty();
-
         // Index all markdown files in the vault
         await this.indexVault();
       } else {
@@ -284,11 +296,6 @@ export class SearchService {
             this.fileModificationTimes.get(file.path) === file.stat.mtime
           ) {
             filesIndexed++;
-
-            // Save the index periodically (every 20 files)
-            if (filesIndexed % 20 === 0) {
-              await this.save();
-            }
           }
 
           // Check if indexing has failed after each file
@@ -302,11 +309,6 @@ export class SearchService {
           this.lastError = error instanceof Error ? error.message : String(error);
           throw new Error('Error indexing files', { cause: error });
         }
-      }
-
-      // Save the index after all files have been processed
-      if (filesIndexed > 0 && !this.indexingFailed) {
-        await this.save();
       }
 
       console.log(`Indexed ${filesIndexed} files out of ${markdownFiles.length} total files`);
@@ -698,9 +700,6 @@ export class SearchService {
       this.fileModificationTimes.clear();
       this.indexingFailed = false;
 
-      // Mark the index as dirty
-      this.markDirty();
-
       // Delete the index file from disk
       const exists = await this.app.vault.adapter.exists(this.indexFilePath);
       if (exists) {
@@ -724,8 +723,7 @@ export class SearchService {
    */
   async save(): Promise<void> {
     if (!this.index || !this.indexReady) {
-      console.warn('Cannot save index: index not ready');
-      return;
+      throw new Error("Can't save index: index not ready");
     }
 
     try {
@@ -750,6 +748,11 @@ export class SearchService {
       // Clear the dirty mark after saving
       this.isDirty = false;
       this.dirtyTimestamp = 0;
+      // Stop the save timer if it exists
+      if (this.saveTimer) {
+        clearInterval(this.saveTimer);
+        this.saveTimer = null;
+      }
 
       console.log('Search index saved successfully');
     } catch (error) {
