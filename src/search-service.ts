@@ -44,6 +44,9 @@ export class SearchService {
   private documentEmbeddings: Map<string, number[]> = new Map();
   private useVectorSearch = false;
   private maxSearchResults = 5;
+  private currentFileIndex = 0;
+  private totalFiles = 0;
+  private lastError: string = '';
 
   /**
    * Constructor
@@ -164,6 +167,7 @@ export class SearchService {
       }
 
       this.indexingInProgress = true;
+      this.lastError = '';
       console.log('Initializing Orama search index');
 
       // Create a new index
@@ -192,6 +196,7 @@ export class SearchService {
       console.error('Error initializing search index:', error);
       this.indexingInProgress = false;
       this.indexingFailed = true;
+      this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
     }
   }
@@ -208,14 +213,18 @@ export class SearchService {
       console.log('Indexing vault...');
 
       const markdownFiles = this.app.vault.getMarkdownFiles();
+      this.totalFiles = markdownFiles.length;
+      this.currentFileIndex = 0;
 
       for (const file of markdownFiles) {
+        this.currentFileIndex++;
         await this.indexFile(file);
       }
 
       console.log(`Indexed ${markdownFiles.length} files`);
     } catch (error) {
       console.error('Error indexing vault:', error);
+      this.lastError = error instanceof Error ? error.message : String(error);
       throw error;
     }
   }
@@ -529,6 +538,38 @@ export class SearchService {
    */
   isIndexingFailed(): boolean {
     return this.indexingFailed;
+  }
+
+  /**
+   * Get the current indexing status
+   * @returns Object with status information
+   */
+  getIndexingStatus(): { status: string; message: string } {
+    if (this.indexingInProgress) {
+      return {
+        status: 'indexing',
+        message: `Indexing ${this.currentFileIndex} of ${this.totalFiles}...`,
+      };
+    }
+
+    if (this.indexingFailed) {
+      return {
+        status: 'error',
+        message: this.lastError || 'An error occurred during indexing',
+      };
+    }
+
+    if (this.indexReady) {
+      return {
+        status: 'ready',
+        message: 'Ready',
+      };
+    }
+
+    return {
+      status: 'initializing',
+      message: 'Initializing...',
+    };
   }
 
   /**

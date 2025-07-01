@@ -84,6 +84,8 @@ class ChatView extends ItemView {
   private chatMessages: ChatMessage[] = [];
   private useCurrentNoteCheckbox!: HTMLInputElement;
   private useVaultSearchCheckbox!: HTMLInputElement;
+  private statusIndicator!: HTMLDivElement;
+  private statusUpdateInterval: number = 0;
 
   constructor(leaf: WorkspaceLeaf, plugin: ObsidianAssistant) {
     super(leaf);
@@ -219,8 +221,20 @@ class ChatView extends ItemView {
     const buttonContainer = inputContainer.createDiv({
       cls: 'obsidian-assistant-button-container',
     });
-    const sendButton = buttonContainer.createEl('button', { text: 'Send' });
-    const clearButton = buttonContainer.createEl('button', {
+
+    // Add status indicator
+    this.statusIndicator = buttonContainer.createDiv({
+      cls: 'obsidian-assistant-status-indicator',
+      text: 'Initializing...',
+    });
+
+    // Create button group to keep buttons together
+    const buttonGroup = buttonContainer.createDiv({
+      cls: 'obsidian-assistant-button-group',
+    });
+
+    const sendButton = buttonGroup.createEl('button', { text: 'Send' });
+    const clearButton = buttonGroup.createEl('button', {
       text: 'Clear Chat',
       cls: 'obsidian-assistant-clear-button',
     });
@@ -229,6 +243,14 @@ class ChatView extends ItemView {
     setTimeout(() => {
       messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'auto' });
     }, 0);
+
+    // Update status indicator immediately
+    this.updateStatusIndicator();
+
+    // Set up periodic update of status indicator (every 1 second)
+    this.statusUpdateInterval = window.setInterval(() => {
+      this.updateStatusIndicator();
+    }, 1000);
 
     // Handle clear button click
     clearButton.addEventListener('click', () => {
@@ -391,8 +413,30 @@ class ChatView extends ItemView {
     }
   }
 
+  /**
+   * Update the status indicator based on the current indexing status
+   */
+  private updateStatusIndicator(): void {
+    const status = this.plugin.searchService.getIndexingStatus();
+
+    // Update the status indicator text
+    this.statusIndicator.setText(status.message);
+
+    // Update the status indicator class based on the status
+    this.statusIndicator.removeClass(
+      'status-indexing',
+      'status-error',
+      'status-ready',
+      'status-initializing'
+    );
+    this.statusIndicator.addClass(`status-${status.status}`);
+  }
+
   async onClose(): Promise<void> {
     // Clean up resources when view is closed
+    if (this.statusUpdateInterval) {
+      window.clearInterval(this.statusUpdateInterval);
+    }
   }
 }
 
@@ -575,7 +619,9 @@ export default class ObsidianAssistant extends Plugin {
 
     // Don't reindex if indexing has failed
     if (this.searchService.isIndexingFailed()) {
-      console.log('Skipping reindexing because previous indexing failed. Use "Reindex Now" button to reset.');
+      console.log(
+        'Skipping reindexing because previous indexing failed. Use "Reindex Now" button to reset.'
+      );
       return;
     }
 

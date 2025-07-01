@@ -98,10 +98,37 @@
 /* Button container */
 .obsidian-assistant-button-container {
   display: flex;
-  justify-content: flex-end;
-  gap: 6px;
+  justify-content: space-between;
+  align-items: center;
   min-height: 0; /* Allow container to shrink */
   flex-shrink: 0; /* Prevent container from shrinking too much */
+}
+
+/* Status indicator */
+.obsidian-assistant-status-indicator {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-right: auto; /* Push to the left */
+  padding-right: 10px; /* Space between status and buttons */
+}
+
+/* Status indicator states */
+.obsidian-assistant-status-indicator.status-indexing {
+  color: var(--text-accent);
+}
+
+.obsidian-assistant-status-indicator.status-error {
+  color: var(--text-error);
+}
+
+.obsidian-assistant-status-indicator.status-ready {
+  color: var(--text-success);
+}
+
+/* Button group to keep buttons together */
+.obsidian-assistant-button-group {
+  display: flex;
+  gap: 6px;
 }
 
 /* Send button */
