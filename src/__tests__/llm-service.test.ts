@@ -141,4 +141,66 @@ describe('LLMService', () => {
       '<CONTEXT>\nThis is some context data from the vault</CONTEXT>'
     );
   });
+
+  test('should call Claude API correctly', async () => {
+    // Create a new instance with Claude config
+    const claudeConfig: LLMServiceConfig = {
+      service: 'claude',
+      model: 'claude-3-opus-20240229',
+      serviceUrl: 'https://api.anthropic.com',
+      systemPrompt: 'You are a helpful assistant.',
+      apiKey: 'test-api-key',
+    };
+
+    const claudeService = new LLMService(claudeConfig);
+
+    // Mock successful response
+    const mockResponse = {
+      content: [
+        {
+          text: 'This is a response from Claude',
+          type: 'text',
+        },
+      ],
+      id: 'msg_123456',
+      model: 'claude-3-opus-20240229',
+      role: 'assistant',
+      type: 'message',
+    };
+
+    (global.fetch as jest.Mock).mockResolvedValueOnce({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
+
+    const response = await claudeService.sendMessage(messages);
+
+    // Check that fetch was called with the correct arguments
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://api.anthropic.com/v1/messages',
+      expect.objectContaining({
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'test-api-key',
+          'anthropic-version': '2023-06-01',
+        },
+        body: expect.any(String),
+      })
+    );
+
+    // Check that the body contains the correct data
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body).toEqual({
+      model: 'claude-3-opus-20240229',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: 'Hello' }],
+      system: 'You are a helpful assistant.',
+    });
+
+    // Check the response
+    expect(response).toBe('This is a response from Claude');
+  });
 });

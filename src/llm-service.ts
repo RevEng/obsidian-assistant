@@ -85,6 +85,8 @@ export class LLMService {
           return await this.callOllama(allMessages);
         case 'openai':
           return await this.callOpenAI(allMessages);
+        case 'claude':
+          return await this.callClaude(allMessages);
         default:
           throw new Error(`Unsupported LLM service: ${this.config.service}`);
       }
@@ -183,6 +185,60 @@ export class LLMService {
       const errorMessage = error instanceof Error ? error.message : String(error);
       new Notice(`Error calling OpenAI: ${errorMessage}`);
       throw new Error('Failed to call OpenAI API', { cause: error });
+    }
+  }
+
+  /**
+   * Call the Claude AI API
+   * @param messages - Array of chat messages
+   * @returns Promise with the Claude response
+   */
+  private async callClaude(messages: ChatMessage[]): Promise<string> {
+    try {
+      // Convert messages to Claude format
+      const systemMessage = messages.find((msg) => msg.role === 'system');
+      const userAndAssistantMessages = messages.filter((msg) => msg.role !== 'system');
+
+      // Prepare request to Claude API
+      const body: Record<string, any> = {
+        model: this.config.model,
+        max_tokens: 4096,
+        messages: userAndAssistantMessages.map((msg) => ({
+          role: msg.role,
+          content: msg.content,
+        })),
+      };
+
+      // Add system message as a system prompt if it exists
+      if (systemMessage) {
+        body.system = systemMessage.content;
+      }
+
+      // Prepare headers with API key
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-api-key': this.config.apiKey || '',
+        'anthropic-version': '2023-06-01',
+      };
+
+      const response = await fetch(`${this.config.serviceUrl}/v1/messages`, {
+        method: 'POST',
+        headers: headers,
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Claude API error (${response.status}): ${errorText}`);
+      }
+
+      const data = await response.json();
+      return data.content?.[0]?.text || 'No response from Claude';
+    } catch (error) {
+      console.error('Error calling Claude:', error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      new Notice(`Error calling Claude: ${errorMessage}`);
+      throw new Error('Failed to call Claude API', { cause: error });
     }
   }
 }
