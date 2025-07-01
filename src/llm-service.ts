@@ -43,6 +43,65 @@ export class LLMService {
   }
 
   /**
+   * Generate a retrieval query based on the full message history
+   * @param messages - Array of chat messages
+   * @returns Promise with the generated retrieval query
+   */
+  async generateRetrievalQuery(messages: ChatMessage[]): Promise<string> {
+    try {
+      // Create a system message with instructions for generating a retrieval query
+      const systemMessage: ChatMessage = {
+        role: 'system',
+        content: `You are a retrieval query generator. Your task is to generate a search query based on the conversation history.
+
+The query should:
+- Consider whether the user is asking a question or making a statement
+- Consider whether the latest message is related to the previous messages
+- Consider anything implied by the message history, such as things referenced by pronouns
+- Be based on the user's intent
+- Expand on any vocabulary, using additional keywords and concepts that are closely related to the user's message
+- Be concise but comprehensive
+
+Return ONLY the search query text without any explanations or additional formatting.`,
+      };
+
+      // Create a new message asking for a retrieval query
+      const queryMessage: ChatMessage = {
+        role: 'user',
+        content:
+          'Based on this conversation history, generate a retrieval query that will help find the most relevant information.',
+      };
+
+      // Combine all messages
+      const allMessages: ChatMessage[] = [systemMessage, ...messages, queryMessage];
+
+      // Handle different LLM services
+      let retrievalQuery = '';
+      switch (this.config.service) {
+        case 'ollama':
+          retrievalQuery = await this.callOllama(allMessages);
+          break;
+        case 'openai':
+          retrievalQuery = await this.callOpenAI(allMessages);
+          break;
+        case 'claude':
+          retrievalQuery = await this.callClaude(allMessages);
+          break;
+        default:
+          throw new Error(`Unsupported LLM service: ${this.config.service}`);
+      }
+
+      console.log('Generated retrieval query:', retrievalQuery);
+      return retrievalQuery.trim();
+    } catch (error) {
+      console.error('Error generating retrieval query:', error);
+      // If there's an error, return the last user message as fallback
+      const lastUserMessage = [...messages].reverse().find((msg) => msg.role === 'user');
+      return lastUserMessage?.content || '';
+    }
+  }
+
+  /**
    * Send a message to the LLM service and get a response
    * @param messages - Array of chat messages
    * @param contextData - Optional context data from the vault
@@ -217,17 +276,12 @@ export class LLMService {
       // Prepare request to Claude API
       const body: Record<string, any> = {
         model: this.config.model,
-        max_tokens: 4096,
+        max_tokens: this.config.maxContextLength ?? 4096, // Default max tokens if not provided
         messages: userAndAssistantMessages.map((msg) => ({
           role: msg.role,
           content: msg.content,
         })),
       };
-
-      // Set max_tokens_to_sample if maxContextLength is provided
-      if (this.config.maxContextLength) {
-        body.max_tokens_to_sample = this.config.maxContextLength;
-      }
 
       // Add system message as a system prompt if it exists
       if (systemMessage) {

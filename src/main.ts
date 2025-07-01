@@ -469,8 +469,34 @@ class ChatView extends ItemView {
         await this.plugin.reindexScheduledFiles();
       }
 
-      // Use the search service to search the vault
-      const contextData = await this.plugin.searchService.searchVault(query, searchOptions);
+      // Generate an enhanced retrieval query based on the full message history
+      let retrievalQuery = query;
+
+      // Only generate a retrieval query if we have chat history and are searching the vault
+      if (this.chatMessages.length > 0 && searchOptions.useVaultSearch) {
+        try {
+          // Update LLM service config in case settings changed
+          const config = createLLMServiceConfig(
+            this.plugin.settings.llmServiceProvider,
+            this.plugin.settings
+          );
+          this.llmService.updateConfig(config);
+
+          // Generate retrieval query based on the full message history
+          retrievalQuery = await this.llmService.generateRetrievalQuery(this.chatMessages);
+          console.log('Using enhanced retrieval query:', retrievalQuery);
+        } catch (queryError) {
+          console.error('Error generating retrieval query:', queryError);
+          // Fall back to the original query if there's an error
+          console.log('Falling back to original query:', query);
+        }
+      }
+
+      // Use the search service to search the vault with the enhanced query
+      const contextData = await this.plugin.searchService.searchVault(
+        retrievalQuery,
+        searchOptions
+      );
 
       return contextData;
     } catch (error: unknown) {
