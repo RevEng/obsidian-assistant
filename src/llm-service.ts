@@ -25,6 +25,7 @@ export interface ChatMessage {
  */
 export class LLMService {
   private config: LLMServiceConfig;
+  private isCancelled = false;
 
   /**
    * Constructor
@@ -32,6 +33,13 @@ export class LLMService {
    */
   constructor(config: LLMServiceConfig) {
     this.config = config;
+  }
+
+  /**
+   * Cancel the current request if one is in progress
+   */
+  cancelRequest(): void {
+    this.isCancelled = true;
   }
 
   /**
@@ -109,6 +117,9 @@ Return ONLY the search query text without any explanations or additional formatt
    */
   async sendMessage(messages: ChatMessage[], contextData?: string): Promise<string> {
     try {
+      // Reset cancellation flag at the start of a new request
+      this.isCancelled = false;
+
       // Create a single system message if needed
       const allMessages: ChatMessage[] = [];
 
@@ -139,16 +150,35 @@ Return ONLY the search query text without any explanations or additional formatt
       // Add user messages
       allMessages.push(...messages);
 
-      // Handle different LLM services
-      switch (this.config.service) {
-        case 'ollama':
-          return await this.callOllama(allMessages);
-        case 'openai':
-          return await this.callOpenAI(allMessages);
-        case 'claude':
-          return await this.callClaude(allMessages);
-        default:
-          throw new Error(`Unsupported LLM service: ${this.config.service}`);
+      try {
+        // Check if cancelled before making the request
+        if (this.isCancelled) {
+          throw new Error('Request cancelled');
+        }
+
+        // Handle different LLM services
+        let response: string;
+        switch (this.config.service) {
+          case 'ollama':
+            response = await this.callOllama(allMessages);
+            break;
+          case 'openai':
+            response = await this.callOpenAI(allMessages);
+            break;
+          case 'claude':
+            response = await this.callClaude(allMessages);
+            break;
+          default:
+            throw new Error(`Unsupported LLM service: ${this.config.service}`);
+        }
+
+        return response;
+      } catch (error) {
+        // Check if this was a cancellation
+        if (this.isCancelled) {
+          throw new Error('Request cancelled');
+        }
+        throw error;
       }
     } catch (error) {
       console.error('Error in LLM service:', error);
@@ -164,6 +194,11 @@ Return ONLY the search query text without any explanations or additional formatt
    */
   private async callOllama(messages: ChatMessage[]): Promise<string> {
     try {
+      // Check if cancelled before making the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
+      }
+
       // Convert messages to Ollama format
       const ollamaMessages = messages.map((msg) => ({
         role: msg.role,
@@ -180,6 +215,11 @@ Return ONLY the search query text without any explanations or additional formatt
       // Set context_length if maxContextLength is provided
       if (this.config.maxContextLength) {
         requestBody.context_length = this.config.maxContextLength;
+      }
+
+      // Check if cancelled before sending the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
       }
 
       const body = JSON.stringify(requestBody);
@@ -213,6 +253,11 @@ Return ONLY the search query text without any explanations or additional formatt
    */
   private async callOpenAI(messages: ChatMessage[]): Promise<string> {
     try {
+      // Check if cancelled before making the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
+      }
+
       // Convert messages to OpenAI format (same format as our ChatMessage)
       const openaiMessages = messages.map((msg) => ({
         role: msg.role,
@@ -228,6 +273,11 @@ Return ONLY the search query text without any explanations or additional formatt
       // Set max_tokens if maxContextLength is provided
       if (this.config.maxContextLength) {
         requestBody.max_tokens = this.config.maxContextLength;
+      }
+
+      // Check if cancelled before sending the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
       }
 
       const body = JSON.stringify(requestBody);
@@ -269,6 +319,11 @@ Return ONLY the search query text without any explanations or additional formatt
    */
   private async callClaude(messages: ChatMessage[]): Promise<string> {
     try {
+      // Check if cancelled before making the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
+      }
+
       // Convert messages to Claude format
       const systemMessage = messages.find((msg) => msg.role === 'system');
       const userAndAssistantMessages = messages.filter((msg) => msg.role !== 'system');
@@ -286,6 +341,11 @@ Return ONLY the search query text without any explanations or additional formatt
       // Add system message as a system prompt if it exists
       if (systemMessage) {
         body.system = systemMessage.content;
+      }
+
+      // Check if cancelled before sending the request
+      if (this.isCancelled) {
+        throw new Error('Request cancelled');
       }
 
       // Prepare headers with API key

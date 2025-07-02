@@ -357,8 +357,29 @@ class ChatView extends ItemView {
       messagesContainer.scrollTo({ top: messagesContainer.scrollHeight, behavior: 'auto' });
     });
 
-    // Handle send button click
+    // Variable to track if a request is in progress
+    let isRequestInProgress = false;
+    let loadingEl: HTMLElement | null = null;
+
+    // Handle send/cancel button click
     sendButton.addEventListener('click', async () => {
+      // If a request is in progress, cancel it
+      if (isRequestInProgress) {
+        // Cancel the request
+        this.llmService.cancelRequest();
+
+        // Remove loading indicator
+        if (loadingEl) {
+          loadingEl.remove();
+          loadingEl = null;
+        }
+
+        // Change button text back to "Send"
+        sendButton.setText('Send');
+        isRequestInProgress = false;
+        return;
+      }
+
       const userInput = inputEl.value.trim();
       if (!userInput) return;
 
@@ -370,10 +391,14 @@ class ChatView extends ItemView {
       this.chatMessages.push({ role: 'user', content: userInput });
 
       // Show loading indicator
-      const loadingEl = messagesContainer.createDiv({
+      loadingEl = messagesContainer.createDiv({
         cls: 'obsidian-assistant-message obsidian-assistant-assistant obsidian-assistant-loading',
       });
       loadingEl.createDiv({ text: 'Assistant is thinking...' });
+
+      // Change button text to "Cancel"
+      sendButton.setText('Cancel');
+      isRequestInProgress = true;
 
       try {
         // Search for relevant context in the vault
@@ -391,26 +416,46 @@ class ChatView extends ItemView {
         const response = await this.llmService.sendMessage(this.chatMessages, contextData);
 
         // Remove loading indicator
-        loadingEl.remove();
+        if (loadingEl) {
+          loadingEl.remove();
+          loadingEl = null;
+        }
 
         // Add assistant response to chat
         this.addMessageToChat(messagesContainer, 'assistant', response);
 
         // Add to chat history
         this.chatMessages.push({ role: 'assistant', content: response });
+
+        // Change button text back to "Send"
+        sendButton.setText('Send');
+        isRequestInProgress = false;
       } catch (error: unknown) {
         // Remove loading indicator
-        loadingEl.remove();
+        if (loadingEl) {
+          loadingEl.remove();
+          loadingEl = null;
+        }
 
-        // Show error message
+        // Check if this was a cancellation
         const errorMessage = error instanceof Error ? error.message : String(error);
-        this.addMessageToChat(messagesContainer, 'assistant', `Error: ${errorMessage}`);
-        new Notice('Error communicating with LLM service: ' + errorMessage);
-        console.error('LLM service error:', error);
+        if (errorMessage.includes('Request cancelled')) {
+          // This was a cancellation, no need to show an error message
+          console.log('Request was cancelled');
+        } else {
+          // Show error message for other errors
+          this.addMessageToChat(messagesContainer, 'assistant', `Error: ${errorMessage}`);
+          new Notice('Error communicating with LLM service: ' + errorMessage);
+          console.error('LLM service error:', error);
+        }
+
+        // Change button text back to "Send"
+        sendButton.setText('Send');
+        isRequestInProgress = false;
       }
     });
 
-    // Allow Enter key to send message (Shift+Enter for new line)
+    // Allow Enter key to send message or cancel (Shift+Enter for new line)
     inputEl.addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && !event.shiftKey) {
         event.preventDefault();
