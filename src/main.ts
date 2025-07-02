@@ -900,6 +900,20 @@ export default class ObsidianAssistant extends Plugin {
         return;
       }
 
+      // Check if the file is already open in a leaf
+      const isFileOpen = this.app.workspace
+        .getLeavesOfType('markdown')
+        .some((leaf) => {
+          // Check if the view has a file property (it should be a MarkdownView)
+          const view = leaf.view as any;
+          return view.file && view.file.path === file.path;
+        });
+
+      // If the file isn't open, open it in a new leaf
+      if (!isFileOpen) {
+        await this.app.workspace.getLeaf().openFile(file);
+      }
+
       // Activate the chat view
       await this.activateView();
 
