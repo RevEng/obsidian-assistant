@@ -1,11 +1,11 @@
 {
   "id": "obsidian-assistant",
   "name": "Obsidian Assistant",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.8.0",
   "description": "Chat with your Obsidian vault using LLM services",
-  "author": "",
+  "author": "James Cooper",
   "authorUrl": "",
-  "isDesktopOnly": false,
+  "isDesktopOnly": true,
   "fundingUrl": ""
 }
