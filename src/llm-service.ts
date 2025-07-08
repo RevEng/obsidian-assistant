@@ -92,8 +92,8 @@ Return ONLY the search query text without any explanations or additional formatt
         case 'openai':
           retrievalQuery = await this.callOpenAI(allMessages);
           break;
-        case 'claude':
-          retrievalQuery = await this.callClaude(allMessages);
+        case 'anthropic':
+          retrievalQuery = await this.callAnthropic(allMessages);
           break;
         default:
           throw new Error(`Unsupported LLM service: ${this.config.service}`);
@@ -165,8 +165,8 @@ Return ONLY the search query text without any explanations or additional formatt
           case 'openai':
             response = await this.callOpenAI(allMessages);
             break;
-          case 'claude':
-            response = await this.callClaude(allMessages);
+          case 'anthropic':
+            response = await this.callAnthropic(allMessages);
             break;
           default:
             throw new Error(`Unsupported LLM service: ${this.config.service}`);
@@ -313,22 +313,22 @@ Return ONLY the search query text without any explanations or additional formatt
   }
 
   /**
-   * Call the Claude AI API
+   * Call the Anthropic AI API
    * @param messages - Array of chat messages
-   * @returns Promise with the Claude response
+   * @returns Promise with the Anthropic response
    */
-  private async callClaude(messages: ChatMessage[]): Promise<string> {
+  private async callAnthropic(messages: ChatMessage[]): Promise<string> {
     try {
       // Check if cancelled before making the request
       if (this.isCancelled) {
         throw new Error('Request cancelled');
       }
 
-      // Convert messages to Claude format
+      // Convert messages to Anthropic format
       const systemMessage = messages.find((msg) => msg.role === 'system');
       const userAndAssistantMessages = messages.filter((msg) => msg.role !== 'system');
 
-      // Prepare request to Claude API
+      // Prepare request to Anthropic API
       const body: Record<string, any> = {
         model: this.config.model,
         max_tokens: this.config.maxContextLength ?? 4096, // Default max tokens if not provided
@@ -363,16 +363,16 @@ Return ONLY the search query text without any explanations or additional formatt
       });
 
       if (response.status >= 400) {
-        throw new Error(`Claude API error (${response.status}): ${response.text}`);
+        throw new Error(`Anthropic API error (${response.status}): ${response.text}`);
       }
 
       const data = response.json;
-      return data.content?.[0]?.text || 'No response from Claude';
+      return data.content?.[0]?.text || 'No response from Anthropic';
     } catch (error) {
-      console.error('Error calling Claude:', error);
+      console.error('Error calling Anthropic:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
-      new Notice(`Error calling Claude: ${errorMessage}`);
-      throw new Error('Failed to call Claude API', { cause: error });
+      new Notice(`Error calling Anthropic: ${errorMessage}`);
+      throw new Error('Failed to call Anthropic API', { cause: error });
     }
   }
 }

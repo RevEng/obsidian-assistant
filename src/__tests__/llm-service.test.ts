@@ -145,28 +145,28 @@ describe('LLMService', () => {
     );
   });
 
-  test('should call Claude API correctly', async () => {
-    // Create a new instance with Claude config
-    const claudeConfig: LLMServiceConfig = {
-      service: 'claude',
-      model: 'claude-3-opus-20240229',
+  test('should call Anthropic API correctly', async () => {
+    // Create a new instance with Anthropic config
+    const anthropicConfig: LLMServiceConfig = {
+      service: 'anthropic',
+      model: 'anthropic-3-opus-20240229',
       serviceUrl: 'https://api.anthropic.com',
       systemPrompt: 'You are a helpful assistant.',
       apiKey: 'test-api-key',
     };
 
-    const claudeService = new LLMService(claudeConfig);
+    const anthropicService = new LLMService(anthropicConfig);
 
     // Mock successful response
     const mockResponse = {
       content: [
         {
-          text: 'This is a response from Claude',
+          text: 'This is a response from Anthropic',
           type: 'text',
         },
       ],
       id: 'msg_123456',
-      model: 'claude-3-opus-20240229',
+      model: 'anthropic-3-opus-20240229',
       role: 'assistant',
       type: 'message',
     };
@@ -179,7 +179,7 @@ describe('LLMService', () => {
 
     const messages: ChatMessage[] = [{ role: 'user', content: 'Hello' }];
 
-    const response = await claudeService.sendMessage(messages);
+    const response = await anthropicService.sendMessage(messages);
 
     // Check that requestUrl was called with the correct arguments
     expect(requestUrl).toHaveBeenCalledWith(
@@ -198,13 +198,13 @@ describe('LLMService', () => {
     // Check that the body contains the correct data
     const body = JSON.parse((requestUrl as jest.Mock).mock.calls[0][0].body);
     expect(body).toEqual({
-      model: 'claude-3-opus-20240229',
+      model: 'anthropic-3-opus-20240229',
       max_tokens: 4096,
       messages: [{ role: 'user', content: 'Hello' }],
       system: 'You are a helpful assistant.',
     });
 
     // Check the response
-    expect(response).toBe('This is a response from Claude');
+    expect(response).toBe('This is a response from Anthropic');
   });
 });

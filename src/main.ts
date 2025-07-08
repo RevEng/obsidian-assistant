@@ -33,19 +33,19 @@ function createLLMServiceConfig(
       apiKey: settings.openaiLLMConfig.apiKey,
       maxContextLength: settings.openaiLLMConfig.maxContextLength,
     };
-  } else if (serviceProvider === 'claude') {
+  } else if (serviceProvider === 'anthropic') {
     return {
-      service: 'claude',
-      model: settings.claudeLLMConfig.model,
-      serviceUrl: settings.claudeLLMConfig.serviceUrl,
+      service: 'anthropic',
+      model: settings.anthropicLLMConfig.model,
+      serviceUrl: settings.anthropicLLMConfig.serviceUrl,
       systemPrompt: settings.systemPrompt,
-      apiKey: settings.claudeLLMConfig.apiKey,
-      maxContextLength: settings.claudeLLMConfig.maxContextLength,
+      apiKey: settings.anthropicLLMConfig.apiKey,
+      maxContextLength: settings.anthropicLLMConfig.maxContextLength,
     };
   } else {
     // Throw an error if service is not recognized
     throw new Error(
-      `Unexpected service provider: ${serviceProvider}. Expected 'ollama', 'openai', or 'claude'.`
+      `Unexpected service provider: ${serviceProvider}. Expected 'ollama', 'openai', or 'anthropic'.`
     );
   }
 }
@@ -88,7 +88,7 @@ interface ObsidianAssistantSettings {
     apiKey: string;
     maxContextLength: number;
   };
-  claudeLLMConfig: {
+  anthropicLLMConfig: {
     model: string;
     serviceUrl: string;
     apiKey: string;
@@ -127,7 +127,7 @@ const DEFAULT_SETTINGS: ObsidianAssistantSettings = {
     apiKey: '',
     maxContextLength: 128000,
   },
-  claudeLLMConfig: {
+  anthropicLLMConfig: {
     model: 'claude-sonnet-4-20250514',
     serviceUrl: 'https://api.anthropic.com',
     apiKey: '',
@@ -825,7 +825,7 @@ export default class ObsidianAssistant extends Plugin {
       this.settings.llmServiceProvider = DEFAULT_SETTINGS.llmServiceProvider;
       this.settings.ollamaLLMConfig = DEFAULT_SETTINGS.ollamaLLMConfig;
       this.settings.openaiLLMConfig = DEFAULT_SETTINGS.openaiLLMConfig;
-      this.settings.claudeLLMConfig = DEFAULT_SETTINGS.claudeLLMConfig;
+      this.settings.anthropicLLMConfig = DEFAULT_SETTINGS.anthropicLLMConfig;
     }
 
     // Validate embedding service settings
@@ -980,7 +980,7 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
         dropdown
           .addOption('ollama', 'Ollama')
           .addOption('openai', 'OpenAI API Compatible')
-          .addOption('claude', 'Claude AI')
+          .addOption('anthropic', 'Anthropic')
           .setValue(this.plugin.settings.llmServiceProvider)
           .onChange(async (value: string) => {
             this.plugin.settings.llmServiceProvider = value;
@@ -1111,42 +1111,42 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
               }
             });
         });
-    } else if (this.plugin.settings.llmServiceProvider === 'claude') {
-      // Claude-specific settings
+    } else if (this.plugin.settings.llmServiceProvider === 'anthropic') {
+      // Anthropic-specific settings
       new Setting(llmServiceSettingsContainer)
-        .setName('Claude Model')
+        .setName('Anthropic Model')
         .setDesc(
-          'Select the model to use with Claude (e.g., claude-3-opus-20240229, claude-3-sonnet-20240229)'
+          'Select the model to use with Anthropic (e.g., anthropic-3-opus-20240229, anthropic-3-sonnet-20240229)'
         )
         .addText((text) => {
           text
-            .setValue(this.plugin.settings.claudeLLMConfig.model)
+            .setValue(this.plugin.settings.anthropicLLMConfig.model)
             .onChange(async (value: string) => {
-              this.plugin.settings.claudeLLMConfig.model = value;
+              this.plugin.settings.anthropicLLMConfig.model = value;
               await this.plugin.saveSettings();
             });
         });
 
       new Setting(llmServiceSettingsContainer)
-        .setName('Claude Service URL')
-        .setDesc('URL for the Claude AI service (default: https://api.anthropic.com)')
+        .setName('Anthropic Service URL')
+        .setDesc('URL for the Anthropic service (default: https://api.anthropic.com)')
         .addText((text) => {
           text
-            .setValue(this.plugin.settings.claudeLLMConfig.serviceUrl)
+            .setValue(this.plugin.settings.anthropicLLMConfig.serviceUrl)
             .onChange(async (value: string) => {
-              this.plugin.settings.claudeLLMConfig.serviceUrl = value;
+              this.plugin.settings.anthropicLLMConfig.serviceUrl = value;
               await this.plugin.saveSettings();
             });
         });
 
       new Setting(llmServiceSettingsContainer)
-        .setName('Claude API Key')
-        .setDesc('API key for Claude AI service')
+        .setName('Anthropic API Key')
+        .setDesc('API key for Anthropic service')
         .addText((text) => {
           text
-            .setValue(this.plugin.settings.claudeLLMConfig.apiKey)
+            .setValue(this.plugin.settings.anthropicLLMConfig.apiKey)
             .onChange(async (value: string) => {
-              this.plugin.settings.claudeLLMConfig.apiKey = value;
+              this.plugin.settings.anthropicLLMConfig.apiKey = value;
               await this.plugin.saveSettings();
             });
           text.inputEl.type = 'password';
@@ -1154,14 +1154,14 @@ class ObsidianAssistantSettingTab extends PluginSettingTab {
 
       new Setting(llmServiceSettingsContainer)
         .setName('Max Context Length')
-        .setDesc('Maximum context window length in tokens (default: 200000)')
+        .setDesc('Maximum context window length in tokens (default: 64000)')
         .addText((text) => {
           text
-            .setValue(String(this.plugin.settings.claudeLLMConfig.maxContextLength))
+            .setValue(String(this.plugin.settings.anthropicLLMConfig.maxContextLength))
             .onChange(async (value: string) => {
               const numValue = Number(value);
               if (!isNaN(numValue) && numValue > 0) {
-                this.plugin.settings.claudeLLMConfig.maxContextLength = numValue;
+                this.plugin.settings.anthropicLLMConfig.maxContextLength = numValue;
                 await this.plugin.saveSettings();
               }
             });
