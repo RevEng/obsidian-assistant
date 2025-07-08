@@ -5,13 +5,13 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
 ## Features
 
 - Side-panel that provides chat with an LLM
-- Support for multiple LLM services (Ollama and OpenAI API-compatible services)
+- Support for multiple LLM services (Ollama, OpenAI API-compatible services, and Anthropic)
 - Vector search of chunks using embedding models from Ollama or OpenAI API-compatible services
 - Configuration options:
-  - LLM service selection (Ollama or OpenAI API-compatible)
+  - LLM service selection (Ollama, OpenAI API-compatible, and Anthropic)
   - LLM model selection
   - LLM service URL
-  - LLM API key (for OpenAI API-compatible services)
+  - LLM API key (for OpenAI API-compatible services and Anthropic)
   - LLM system prompt (optional; default is to use the API's default system prompt)
   - Vector search settings:
     - Toggle on/off
@@ -28,6 +28,7 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
 - One of the following LLM services:
   - Ollama (local, free)
   - OpenAI API or compatible service (requires API key)
+  - Anthropic (requires API key)
 - Node.js version 22.17.0 or later (for development only)
 
 ## Installation
@@ -70,7 +71,12 @@ This application is a plugin for the note-taking app Obsidian. It uses LLM servi
        - LLM model (e.g., gpt-3.5-turbo, gpt-4)
        - LLM service URL (e.g., https://api.openai.com)
        - LLM API key
-   - Optional system prompt
+     - For Anthropic:
+       - LLM model (e.g., claude-sonnet-4-20250514)
+       - LLM service URL (e.g., https://api.anthropic.com)
+       - LLM API key
+   - Maximum context length (default depends on the model)
+   - Optional system prompt (leave empty to use the default system prompt from the LLM service)
    - Vector search settings:
      - Enable/disable vector search
      - Maximum search results (default: 5)
