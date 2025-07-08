@@ -7,7 +7,7 @@ console.log('Building the plugin...');
 execSync('npm run build', { stdio: 'inherit' });
 
 // Files to include in the release
-const filesToInclude = ['main.js', 'manifest.json', 'styles.css'];
+const filesToInclude = ['main.js', 'manifest.json', 'styles.css', 'README.md', 'LICENSE'];
 
 // Create a release directory if it doesn't exist
 const releaseDir = path.join(__dirname, 'release');
