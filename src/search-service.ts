@@ -479,29 +479,20 @@ export class SearchService {
   /**
    * Search the vault for relevant content
    * @param query - The search query
-   * @param options - Search options
    * @returns Promise with the search results as formatted context
    */
-  async searchVault(query: string, options: SearchOptions): Promise<string> {
+  async searchVault(query: string): Promise<string> {
     try {
       let contextData = '';
 
-      // Get current note content if enabled
-      if (options.useCurrentNote) {
-        const currentNoteContent = await this.getCurrentNoteContent();
-        if (currentNoteContent) {
-          contextData += currentNoteContent;
-        }
-      }
-
-      // Search vault if enabled and index is ready
-      if (options.useVaultSearch && this.indexReady && this.index) {
+      // Search vault if index is ready
+      if (this.indexReady && this.index) {
         console.log('Searching vault...');
 
         let results;
 
         // Use hybrid search (vector + keyword) if vector search is enabled, otherwise use keyword search
-        if (options.useVectorSearch && this.useVectorSearch && this.embeddingService) {
+        if (this.useVectorSearch && this.embeddingService) {
           console.log('Using hybrid search (vector + keyword)...');
 
           // Get vector search results
@@ -562,11 +553,6 @@ export class SearchService {
         console.log(`Found ${results.length} results`);
 
         if (results.length > 0) {
-          // Add a separator if we already have current note content
-          if (contextData) {
-            contextData += '\n\n---\n\n';
-          }
-
           contextData += 'Search results from vault:\n\n';
 
           for (const result of results) {
@@ -605,36 +591,6 @@ export class SearchService {
     } catch (error) {
       console.error('Error searching vault:', error);
       return 'Error searching vault.';
-    }
-  }
-
-  /**
-   * Get the content of the current note
-   * @returns Promise with the current note content
-   */
-  private async getCurrentNoteContent(): Promise<string> {
-    try {
-      // Get the active file
-      const activeFile = this.app.workspace.getActiveFile();
-
-      if (!activeFile) {
-        console.warn('No active file found.');
-        return '';
-      }
-
-      // Read the content of the active file
-      const content = await this.app.vault.read(activeFile);
-
-      if (!content) {
-        console.warn('Active note is empty.');
-        return '';
-      }
-
-      // Format the content as context
-      return `Content of the current note "${activeFile.basename}" in Markdown format:\n\n${content}`;
-    } catch (error) {
-      console.error('Error getting current note content:', error);
-      return '';
     }
   }
 

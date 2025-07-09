@@ -767,6 +767,36 @@ export default class ObsidianAssistant extends Plugin {
   }
 
   /**
+   * Get the content of the current note
+   * @returns Promise with the current note content
+   */
+  async getCurrentNoteContent(): Promise<string> {
+    try {
+      // Get the active file
+      const activeFile = this.app.workspace.getActiveFile();
+
+      if (!activeFile) {
+        console.warn('No active file found.');
+        return '';
+      }
+
+      // Read the content of the active file
+      const content = await this.app.vault.read(activeFile);
+
+      if (!content) {
+        console.warn('Active note is empty.');
+        return '';
+      }
+
+      // Format the content as context
+      return `Content of the current note "${activeFile.basename}" in Markdown format:\n\n${content}`;
+    } catch (error) {
+      console.error('Error getting current note content:', error);
+      return '';
+    }
+  }
+
+  /**
    * Handle sending a chat message, including searching for context and getting LLM response
    * @param userInput The user's input message
    * @param chatMessages The current chat message history
@@ -781,8 +811,27 @@ export default class ObsidianAssistant extends Plugin {
     streamingCallback?: (chunk: string, done: boolean) => void
   ): Promise<{ response: string; contextData: string }> {
     try {
-      // Search for relevant context in the vault
-      const contextData = await this.searchVaultForContext(userInput, chatMessages, searchOptions);
+      let contextData = '';
+
+      // Get current note content if enabled
+      if (searchOptions.useCurrentNote) {
+        const currentNoteContent = await this.getCurrentNoteContent();
+        if (currentNoteContent) {
+          contextData = currentNoteContent;
+        }
+      }
+
+      // Search for relevant context in the vault if enabled
+      if (searchOptions.useVaultSearch) {
+        const vaultContextData = await this.searchVaultForContext(userInput, chatMessages);
+
+        // Add a separator if we already have current note content
+        if (contextData && vaultContextData) {
+          contextData += '\n\n---\n\n';
+        }
+
+        contextData += vaultContextData;
+      }
 
       // Get response from LLM service with streaming
       const response = await this.sendMessageToLLM(chatMessages, contextData, streamingCallback);
@@ -798,45 +847,18 @@ export default class ObsidianAssistant extends Plugin {
    * Search vault for context using Orama
    * @param query The search query
    * @param chatMessages Optional chat message history for generating enhanced retrieval queries
-   * @param searchOptions Optional search options (if not provided, will use plugin settings)
    * @returns The context data as a string
    */
-  async searchVaultForContext(
-    query: string,
-    chatMessages: ChatMessage[] = [],
-    searchOptions?: SearchOptions
-  ): Promise<string> {
+  async searchVaultForContext(query: string, chatMessages: ChatMessage[] = []): Promise<string> {
     try {
-      // If search options not provided, use plugin settings
-      if (!searchOptions) {
-        searchOptions = {
-          useCurrentNote: this.settings.useCurrentNote,
-          useVaultSearch: this.settings.useVaultSearch,
-          useVectorSearch: this.settings.useVectorSearch,
-        };
-      }
-
-      // With radio buttons, one option should always be selected
-      // But check just in case neither is selected
-      if (!searchOptions.useCurrentNote && !searchOptions.useVaultSearch) {
-        // Default to searching vault if somehow neither option is selected
-        searchOptions.useVaultSearch = true;
-        this.settings.useVaultSearch = true;
-        this.settings.useCurrentNote = false;
-        await this.saveSettings();
-      }
-
-      // If searching the vault, immediately reindex any scheduled files
-      if (searchOptions.useVaultSearch) {
-        // Process any pending reindexing operations immediately
-        await this.reindexScheduledFiles();
-      }
+      // Process any pending reindexing operations immediately
+      await this.reindexScheduledFiles();
 
       // Generate an enhanced retrieval query based on the full message history
       let retrievalQuery = query;
 
-      // Only generate a retrieval query if we have chat history and are searching the vault
-      if (chatMessages.length > 0 && searchOptions.useVaultSearch) {
+      // Only generate a retrieval query if we have chat history
+      if (chatMessages.length > 0) {
         try {
           // Update LLM service config in case settings changed
           const config = createLLMServiceConfig(this.settings.llmServiceProvider, this.settings);
@@ -853,7 +875,7 @@ export default class ObsidianAssistant extends Plugin {
       }
 
       // Use the search service to search the vault with the enhanced query
-      const contextData = await this.searchService.searchVault(retrievalQuery, searchOptions);
+      const contextData = await this.searchService.searchVault(retrievalQuery);
 
       return contextData;
     } catch (error: unknown) {

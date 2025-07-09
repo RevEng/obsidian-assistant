@@ -1,4 +1,4 @@
-import { SearchService, SearchOptions, ChunkingOptions, NoteDocument } from '../search-service';
+import { SearchService, ChunkingOptions, NoteDocument } from '../search-service';
 import { App, TFile } from 'obsidian';
 import { create, insertMultiple, search, remove } from '@orama/orama';
 import { persist, restore } from '@orama/plugin-data-persistence';
@@ -242,13 +242,16 @@ describe('SearchService', () => {
     // Initialize the index first
     await searchService.initializeIndex();
 
-    const searchOptions: SearchOptions = {
-      useCurrentNote: false,
-      useVaultSearch: true,
-      useVectorSearch: false,
+    // Set useVectorSearch to false
+    // Create a dummy config that won't be used since useVectorSearch is false
+    const dummyConfig: EmbeddingServiceConfig = {
+      service: 'ollama',
+      serviceUrl: 'http://localhost:11434',
+      model: 'nomic-embed-text',
     };
+    searchService.updateEmbeddingConfig(dummyConfig, false);
 
-    const result = await searchService.searchVault('test query', searchOptions);
+    const result = await searchService.searchVault('test query');
 
     // Check that search was called
     expect(search).toHaveBeenCalled();
@@ -331,13 +334,7 @@ describe('SearchService', () => {
       [0.1, 0.2, 0.3, 0.4, 0.5]
     );
 
-    const searchOptions: SearchOptions = {
-      useCurrentNote: false,
-      useVaultSearch: true,
-      useVectorSearch: true,
-    };
-
-    const result = await searchService.searchVault('test query', searchOptions);
+    const result = await searchService.searchVault('test query');
 
     // Check that search was called to get all documents
     expect(search).toHaveBeenCalled();
