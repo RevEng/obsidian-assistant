@@ -18,6 +18,8 @@ These rules must be followed when developing the Obsidian plugin:
 - Do not include commented-out code in the codebase
 - Do not use hard-coded paths unless specifically requested
 - Use console.error for error logging and console.log for debugging information, in addition to user-facing error messages
+- Only modify code directly related to the task at hand
+- Maintain consistency with existing code style and structure where possible
 
 After all changes to source code (.ts or .js files), the following commands should be run:
 
