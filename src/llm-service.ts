@@ -21,6 +21,11 @@ export interface ChatMessage {
 }
 
 /**
+ * Callback for streaming responses
+ */
+export type StreamingCallback = (chunk: string, done: boolean) => void;
+
+/**
  * Class for handling LLM service interactions
  */
 export class LLMService {
@@ -113,9 +118,14 @@ Return ONLY the search query text without any explanations or additional formatt
    * Send a message to the LLM service and get a response
    * @param messages - Array of chat messages
    * @param contextData - Optional context data from the vault
-   * @returns Promise with the LLM response
+   * @param streamingCallback - Optional callback for streaming responses
+   * @returns Promise with the complete LLM response
    */
-  async sendMessage(messages: ChatMessage[], contextData?: string): Promise<string> {
+  async sendMessage(
+    messages: ChatMessage[],
+    contextData?: string,
+    streamingCallback?: StreamingCallback
+  ): Promise<string> {
     try {
       // Reset cancellation flag at the start of a new request
       this.isCancelled = false;
@@ -160,13 +170,13 @@ Return ONLY the search query text without any explanations or additional formatt
         let response: string;
         switch (this.config.service) {
           case 'ollama':
-            response = await this.callOllama(allMessages);
+            response = await this.callOllama(allMessages, streamingCallback);
             break;
           case 'openai':
-            response = await this.callOpenAI(allMessages);
+            response = await this.callOpenAI(allMessages, streamingCallback);
             break;
           case 'anthropic':
-            response = await this.callAnthropic(allMessages);
+            response = await this.callAnthropic(allMessages, streamingCallback);
             break;
           default:
             throw new Error(`Unsupported LLM service: ${this.config.service}`);
@@ -190,9 +200,13 @@ Return ONLY the search query text without any explanations or additional formatt
   /**
    * Call the Ollama API
    * @param messages - Array of chat messages
+   * @param streamingCallback - Optional callback for streaming responses
    * @returns Promise with the Ollama response
    */
-  private async callOllama(messages: ChatMessage[]): Promise<string> {
+  private async callOllama(
+    messages: ChatMessage[],
+    streamingCallback?: StreamingCallback
+  ): Promise<string> {
     try {
       // Check if cancelled before making the request
       if (this.isCancelled) {
@@ -209,7 +223,7 @@ Return ONLY the search query text without any explanations or additional formatt
       const requestBody: Record<string, any> = {
         model: this.config.model,
         messages: ollamaMessages,
-        stream: false,
+        stream: !!streamingCallback, // Enable streaming if callback is provided
       };
 
       // Set context_length if maxContextLength is provided
@@ -223,21 +237,89 @@ Return ONLY the search query text without any explanations or additional formatt
       }
 
       const body = JSON.stringify(requestBody);
-      const response = await requestUrl({
-        url: `${this.config.serviceUrl}/api/chat`,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: body,
-      });
 
-      if (response.status >= 400) {
-        throw new Error(`Ollama API error (${response.status}): ${response.text}`);
+      if (streamingCallback) {
+        // Handle streaming response
+        let fullResponse = '';
+
+        // Use fetch directly for streaming
+        const response = await fetch(`${this.config.serviceUrl}/api/chat`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: body,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Ollama API error (${response.status}): ${await response.text()}`);
+        }
+
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+          while (true) {
+            // Check if cancelled during streaming
+            if (this.isCancelled) {
+              throw new Error('Request cancelled');
+            }
+
+            const { done, value } = await reader.read();
+            if (done) {
+              // Signal completion
+              streamingCallback('', true);
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+
+            // Parse the chunk as JSON lines
+            const lines = chunk.split('\n').filter((line) => line.trim());
+
+            for (const line of lines) {
+              try {
+                const data = JSON.parse(line);
+                if (data.message?.content) {
+                  fullResponse += data.message.content;
+                  streamingCallback(data.message.content, false);
+                }
+              } catch (e) {
+                console.error('Error parsing JSON from stream:', e);
+              }
+            }
+          }
+        } catch (error) {
+          // If cancelled, propagate the error
+          if (this.isCancelled) {
+            throw new Error('Request cancelled');
+          }
+          throw error;
+        }
+
+        return fullResponse;
+      } else {
+        // Non-streaming response
+        const response = await requestUrl({
+          url: `${this.config.serviceUrl}/api/chat`,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: body,
+        });
+
+        if (response.status >= 400) {
+          throw new Error(`Ollama API error (${response.status}): ${response.text}`);
+        }
+
+        const data = response.json;
+        return data.message?.content || 'No response from Ollama';
       }
-
-      const data = response.json;
-      return data.message?.content || 'No response from Ollama';
     } catch (error) {
       console.error('Error calling Ollama:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -249,9 +331,13 @@ Return ONLY the search query text without any explanations or additional formatt
   /**
    * Call the OpenAI API
    * @param messages - Array of chat messages
+   * @param streamingCallback - Optional callback for streaming responses
    * @returns Promise with the OpenAI response
    */
-  private async callOpenAI(messages: ChatMessage[]): Promise<string> {
+  private async callOpenAI(
+    messages: ChatMessage[],
+    streamingCallback?: StreamingCallback
+  ): Promise<string> {
     try {
       // Check if cancelled before making the request
       if (this.isCancelled) {
@@ -268,6 +354,7 @@ Return ONLY the search query text without any explanations or additional formatt
       const requestBody: Record<string, any> = {
         model: this.config.model,
         messages: openaiMessages,
+        stream: !!streamingCallback, // Enable streaming if callback is provided
       };
 
       // Set max_tokens if maxContextLength is provided
@@ -291,19 +378,95 @@ Return ONLY the search query text without any explanations or additional formatt
         headers.Authorization = `Bearer ${this.config.apiKey}`;
       }
 
-      const response = await requestUrl({
-        url: `${this.config.serviceUrl}/v1/chat/completions`,
-        method: 'POST',
-        headers: headers,
-        body: body,
-      });
+      if (streamingCallback) {
+        // Handle streaming response
+        let fullResponse = '';
 
-      if (response.status >= 400) {
-        throw new Error(`OpenAI API error (${response.status}): ${response.text}`);
+        // Use fetch directly for streaming
+        const response = await fetch(`${this.config.serviceUrl}/v1/chat/completions`, {
+          method: 'POST',
+          headers: headers,
+          body: body,
+        });
+
+        if (!response.ok) {
+          throw new Error(`OpenAI API error (${response.status}): ${await response.text()}`);
+        }
+
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+          while (true) {
+            // Check if cancelled during streaming
+            if (this.isCancelled) {
+              throw new Error('Request cancelled');
+            }
+
+            const { done, value } = await reader.read();
+            if (done) {
+              // Signal completion
+              streamingCallback('', true);
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+
+            // Parse the chunk as SSE data
+            const lines = chunk.split('\n').filter((line) => line.trim());
+
+            for (const line of lines) {
+              // Skip lines that don't start with "data: "
+              if (!line.startsWith('data: ')) continue;
+
+              // Remove "data: " prefix
+              const dataStr = line.substring(6);
+
+              // Skip "[DONE]" message
+              if (dataStr === '[DONE]') continue;
+
+              try {
+                const data = JSON.parse(dataStr);
+                const content = data.choices?.[0]?.delta?.content;
+
+                if (content) {
+                  fullResponse += content;
+                  streamingCallback(content, false);
+                }
+              } catch (e) {
+                console.error('Error parsing JSON from stream:', e);
+              }
+            }
+          }
+        } catch (error) {
+          // If cancelled, propagate the error
+          if (this.isCancelled) {
+            throw new Error('Request cancelled');
+          }
+          throw error;
+        }
+
+        return fullResponse;
+      } else {
+        // Non-streaming response
+        const response = await requestUrl({
+          url: `${this.config.serviceUrl}/v1/chat/completions`,
+          method: 'POST',
+          headers: headers,
+          body: body,
+        });
+
+        if (response.status >= 400) {
+          throw new Error(`OpenAI API error (${response.status}): ${response.text}`);
+        }
+
+        const data = response.json;
+        return data.choices?.[0]?.message?.content || 'No response from OpenAI';
       }
-
-      const data = response.json;
-      return data.choices?.[0]?.message?.content || 'No response from OpenAI';
     } catch (error) {
       console.error('Error calling OpenAI:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -315,9 +478,13 @@ Return ONLY the search query text without any explanations or additional formatt
   /**
    * Call the Anthropic AI API
    * @param messages - Array of chat messages
+   * @param streamingCallback - Optional callback for streaming responses
    * @returns Promise with the Anthropic response
    */
-  private async callAnthropic(messages: ChatMessage[]): Promise<string> {
+  private async callAnthropic(
+    messages: ChatMessage[],
+    streamingCallback?: StreamingCallback
+  ): Promise<string> {
     try {
       // Check if cancelled before making the request
       if (this.isCancelled) {
@@ -336,6 +503,7 @@ Return ONLY the search query text without any explanations or additional formatt
           role: msg.role,
           content: msg.content,
         })),
+        stream: !!streamingCallback, // Enable streaming if callback is provided
       };
 
       // Add system message as a system prompt if it exists
@@ -353,21 +521,101 @@ Return ONLY the search query text without any explanations or additional formatt
         'Content-Type': 'application/json',
         'x-api-key': this.config.apiKey || '',
         'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
       };
 
-      const response = await requestUrl({
-        url: `${this.config.serviceUrl}/v1/messages`,
-        method: 'POST',
-        headers: headers,
-        body: JSON.stringify(body),
-      });
+      if (streamingCallback) {
+        // Handle streaming response
+        let fullResponse = '';
 
-      if (response.status >= 400) {
-        throw new Error(`Anthropic API error (${response.status}): ${response.text}`);
+        // Use fetch directly for streaming
+        const response = await fetch(`${this.config.serviceUrl}/v1/messages`, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body),
+        });
+
+        if (!response.ok) {
+          throw new Error(`Anthropic API error (${response.status}): ${await response.text()}`);
+        }
+
+        if (!response.body) {
+          throw new Error('Response body is null');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+
+        try {
+          while (true) {
+            // Check if cancelled during streaming
+            if (this.isCancelled) {
+              throw new Error('Request cancelled');
+            }
+
+            const { done, value } = await reader.read();
+            if (done) {
+              // Signal completion
+              streamingCallback('', true);
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+
+            // Parse the chunk as SSE data
+            const lines = chunk.split('\n').filter((line) => line.trim());
+
+            for (const line of lines) {
+              // Skip lines that don't start with "data: "
+              if (!line.startsWith('data: ')) continue;
+
+              // Remove "data: " prefix
+              const dataStr = line.substring(6);
+
+              try {
+                const data = JSON.parse(dataStr);
+
+                // Handle different event types
+                if (data.type === 'content_block_delta') {
+                  const content = data.delta?.text;
+                  if (content) {
+                    fullResponse += content;
+                    streamingCallback(content, false);
+                  }
+                } else if (data.type === 'message_stop') {
+                  // End of message
+                  streamingCallback('', true);
+                }
+              } catch (e) {
+                console.error('Error parsing JSON from stream:', e);
+              }
+            }
+          }
+        } catch (error) {
+          // If cancelled, propagate the error
+          if (this.isCancelled) {
+            throw new Error('Request cancelled');
+          }
+          throw error;
+        }
+
+        return fullResponse;
+      } else {
+        // Non-streaming response
+        const response = await requestUrl({
+          url: `${this.config.serviceUrl}/v1/messages`,
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body),
+        });
+
+        if (response.status >= 400) {
+          throw new Error(`Anthropic API error (${response.status}): ${response.text}`);
+        }
+
+        const data = response.json;
+        return data.content?.[0]?.text || 'No response from Anthropic';
       }
-
-      const data = response.json;
-      return data.content?.[0]?.text || 'No response from Anthropic';
     } catch (error) {
       console.error('Error calling Anthropic:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);

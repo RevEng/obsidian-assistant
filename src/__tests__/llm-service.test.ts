@@ -190,6 +190,7 @@ describe('LLMService', () => {
           'Content-Type': 'application/json',
           'x-api-key': 'test-api-key',
           'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true',
         },
         body: expect.any(String),
       })
@@ -202,6 +203,7 @@ describe('LLMService', () => {
       max_tokens: 4096,
       messages: [{ role: 'user', content: 'Hello' }],
       system: 'You are a helpful assistant.',
+      stream: false,
     });
 
     // Check the response

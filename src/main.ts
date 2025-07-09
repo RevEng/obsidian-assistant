@@ -394,17 +394,51 @@ class ChatView extends ItemView {
 
         this.llmService.updateConfig(config);
 
-        // Get response from LLM service
-        const response = await this.llmService.sendMessage(this.chatMessages, contextData);
-
         // Remove loading indicator
         if (loadingEl) {
           loadingEl.remove();
           loadingEl = null;
         }
 
-        // Add assistant response to chat
-        this.addMessageToChat(messagesContainer, 'assistant', response);
+        // Create an initial message element with loading animation
+        const assistantMessageEl = this.addMessageToChat(messagesContainer, 'assistant', '');
+
+        // Add loading animation class to the content element
+        const contentEl = assistantMessageEl.querySelector('.obsidian-assistant-content');
+        if (contentEl) {
+          contentEl.addClass('obsidian-assistant-loading');
+        }
+
+        // Full response to be collected from streaming
+        let fullResponse = '';
+        let isFirstChunk = true;
+
+        // Get response from LLM service with streaming
+        const response = await this.llmService.sendMessage(
+          this.chatMessages,
+          contextData,
+          (chunk, done) => {
+            if (!done) {
+              // Append the new chunk to the full response
+              fullResponse += chunk;
+
+              // If this is the first chunk, remove the loading animation
+              if (isFirstChunk) {
+                isFirstChunk = false;
+                const contentEl = assistantMessageEl.querySelector('.obsidian-assistant-content');
+                if (contentEl) {
+                  contentEl.removeClass('obsidian-assistant-loading');
+                }
+              }
+
+              // Update the message with the current full response
+              this.updateMessageInChat(assistantMessageEl, fullResponse);
+            }
+          }
+        );
+
+        // Ensure the final message is complete (in case streaming had issues)
+        this.updateMessageInChat(assistantMessageEl, response);
 
         // Add to chat history
         this.chatMessages.push({ role: 'assistant', content: response });
@@ -452,7 +486,7 @@ class ChatView extends ItemView {
     role: 'user' | 'assistant',
     content: string,
     scrollToBottom: boolean = true
-  ): void {
+  ): HTMLElement {
     const messageEl = container.createDiv({
       cls: `obsidian-assistant-message obsidian-assistant-${role}`,
     });
@@ -466,6 +500,28 @@ class ChatView extends ItemView {
     // Scroll to bottom if requested
     if (scrollToBottom) {
       container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    }
+
+    return messageEl;
+  }
+
+  // Helper to update an existing message in the chat UI
+  private updateMessageInChat(
+    messageEl: HTMLElement,
+    content: string,
+    scrollToBottom: boolean = true
+  ): void {
+    const contentEl = messageEl.querySelector('.obsidian-assistant-content');
+    if (contentEl) {
+      contentEl.textContent = content;
+    }
+
+    // Scroll to bottom if requested
+    if (scrollToBottom) {
+      const container = messageEl.parentElement;
+      if (container) {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+      }
     }
   }
 
