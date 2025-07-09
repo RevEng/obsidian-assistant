@@ -513,7 +513,6 @@ class ChatView extends ItemView {
     }
   }
 
-
   /**
    * Update the status indicator based on the current indexing status
    */
@@ -554,10 +553,7 @@ export default class ObsidianAssistant extends Plugin {
     await this.loadSettings();
 
     // Initialize LLM service with plugin settings based on selected service
-    const llmConfig = createLLMServiceConfig(
-      this.settings.llmServiceProvider,
-      this.settings
-    );
+    const llmConfig = createLLMServiceConfig(this.settings.llmServiceProvider, this.settings);
     this.llmService = new LLMService(llmConfig);
 
     // Initialize search service with chunking options and embedding configuration
@@ -752,18 +748,11 @@ export default class ObsidianAssistant extends Plugin {
   ): Promise<string> {
     try {
       // Update LLM service config in case settings changed
-      const config = createLLMServiceConfig(
-        this.settings.llmServiceProvider,
-        this.settings
-      );
+      const config = createLLMServiceConfig(this.settings.llmServiceProvider, this.settings);
       this.llmService.updateConfig(config);
 
       // Send the message to the LLM service
-      return await this.llmService.sendMessage(
-        chatMessages,
-        contextData,
-        streamingCallback
-      );
+      return await this.llmService.sendMessage(chatMessages, contextData, streamingCallback);
     } catch (error: unknown) {
       console.error('Error sending message to LLM:', error);
       throw error; // Re-throw to let caller handle the error
@@ -796,11 +785,7 @@ export default class ObsidianAssistant extends Plugin {
       const contextData = await this.searchVaultForContext(userInput, chatMessages, searchOptions);
 
       // Get response from LLM service with streaming
-      const response = await this.sendMessageToLLM(
-        chatMessages,
-        contextData,
-        streamingCallback
-      );
+      const response = await this.sendMessageToLLM(chatMessages, contextData, streamingCallback);
 
       return { response, contextData };
     } catch (error: unknown) {
@@ -817,8 +802,8 @@ export default class ObsidianAssistant extends Plugin {
    * @returns The context data as a string
    */
   async searchVaultForContext(
-    query: string, 
-    chatMessages: ChatMessage[] = [], 
+    query: string,
+    chatMessages: ChatMessage[] = [],
     searchOptions?: SearchOptions
   ): Promise<string> {
     try {
@@ -854,10 +839,7 @@ export default class ObsidianAssistant extends Plugin {
       if (chatMessages.length > 0 && searchOptions.useVaultSearch) {
         try {
           // Update LLM service config in case settings changed
-          const config = createLLMServiceConfig(
-            this.settings.llmServiceProvider,
-            this.settings
-          );
+          const config = createLLMServiceConfig(this.settings.llmServiceProvider, this.settings);
           this.llmService.updateConfig(config);
 
           // Generate retrieval query based on the full message history
@@ -871,10 +853,7 @@ export default class ObsidianAssistant extends Plugin {
       }
 
       // Use the search service to search the vault with the enhanced query
-      const contextData = await this.searchService.searchVault(
-        retrievalQuery,
-        searchOptions
-      );
+      const contextData = await this.searchService.searchVault(retrievalQuery, searchOptions);
 
       return contextData;
     } catch (error: unknown) {

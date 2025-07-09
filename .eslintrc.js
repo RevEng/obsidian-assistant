@@ -84,6 +84,9 @@ module.exports = {
     // Allow all console commands in ts files
     'no-console': 'off',
 
+    // Allow while(true) loops
+    'no-constant-condition': ['error', { checkLoops: false }],
+
     // TypeScript specific rules
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/no-explicit-any': 'warn',
