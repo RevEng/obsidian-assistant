@@ -161,7 +161,6 @@ const fileEditedCooldownPeriod = 5;
 // Chat view class
 class ChatView extends ItemView {
   plugin: ObsidianAssistant;
-  private llmService: LLMService;
   private chatMessages: ChatMessage[] = [];
   private useCurrentNoteCheckbox!: HTMLInputElement;
   private useVaultSearchCheckbox!: HTMLInputElement;
@@ -171,14 +170,6 @@ class ChatView extends ItemView {
   constructor(leaf: WorkspaceLeaf, plugin: ObsidianAssistant) {
     super(leaf);
     this.plugin = plugin;
-
-    // Initialize LLM service with plugin settings based on selected service
-    const config = createLLMServiceConfig(
-      this.plugin.settings.llmServiceProvider,
-      this.plugin.settings
-    );
-
-    this.llmService = new LLMService(config);
   }
 
   getViewType(): string {
@@ -348,7 +339,7 @@ class ChatView extends ItemView {
       // If a request is in progress, cancel it
       if (isRequestInProgress) {
         // Cancel the request
-        this.llmService.cancelRequest();
+        this.plugin.cancelLLMRequest();
 
         // Remove loading indicator
         if (loadingEl) {
@@ -383,16 +374,12 @@ class ChatView extends ItemView {
       isRequestInProgress = true;
 
       try {
-        // Search for relevant context in the vault
-        const contextData = await this.searchVaultForContext(userInput);
-
-        // Update LLM service config in case settings changed
-        const config = createLLMServiceConfig(
-          this.plugin.settings.llmServiceProvider,
-          this.plugin.settings
-        );
-
-        this.llmService.updateConfig(config);
+        // Get search options from radio buttons
+        const searchOptions: SearchOptions = {
+          useCurrentNote: this.useCurrentNoteCheckbox.checked,
+          useVaultSearch: this.useVaultSearchCheckbox.checked,
+          useVectorSearch: this.plugin.settings.useVectorSearch,
+        };
 
         // Remove loading indicator
         if (loadingEl) {
@@ -413,10 +400,11 @@ class ChatView extends ItemView {
         let fullResponse = '';
         let isFirstChunk = true;
 
-        // Get response from LLM service with streaming
-        const response = await this.llmService.sendMessage(
+        // Use the sendChatMessage method to handle context search and LLM response
+        const { response } = await this.plugin.sendChatMessage(
+          userInput,
           this.chatMessages,
-          contextData,
+          searchOptions,
           (chunk, done) => {
             if (!done) {
               // Append the new chunk to the full response
@@ -525,71 +513,6 @@ class ChatView extends ItemView {
     }
   }
 
-  // Search vault for context using Orama
-  private async searchVaultForContext(query: string): Promise<string> {
-    try {
-      // Get search options from radio buttons and plugin settings
-      const searchOptions: SearchOptions = {
-        useCurrentNote: this.useCurrentNoteCheckbox.checked,
-        useVaultSearch: this.useVaultSearchCheckbox.checked,
-        useVectorSearch: this.plugin.settings.useVectorSearch,
-      };
-
-      // With radio buttons, one option should always be selected
-      // But check just in case neither is selected (should not happen with radio buttons)
-      if (!searchOptions.useCurrentNote && !searchOptions.useVaultSearch) {
-        // Default to searching vault if somehow neither option is selected
-        searchOptions.useVaultSearch = true;
-        this.useVaultSearchCheckbox.checked = true;
-        this.plugin.settings.useVaultSearch = true;
-        this.plugin.settings.useCurrentNote = false;
-        await this.plugin.saveSettings();
-      }
-
-      // If searching the vault, immediately reindex any scheduled files
-      if (searchOptions.useVaultSearch) {
-        // Process any pending reindexing operations immediately
-        await this.plugin.reindexScheduledFiles();
-      }
-
-      // Generate an enhanced retrieval query based on the full message history
-      let retrievalQuery = query;
-
-      // Only generate a retrieval query if we have chat history and are searching the vault
-      if (this.chatMessages.length > 0 && searchOptions.useVaultSearch) {
-        try {
-          // Update LLM service config in case settings changed
-          const config = createLLMServiceConfig(
-            this.plugin.settings.llmServiceProvider,
-            this.plugin.settings
-          );
-          this.llmService.updateConfig(config);
-
-          // Generate retrieval query based on the full message history
-          retrievalQuery = await this.llmService.generateRetrievalQuery(this.chatMessages);
-          console.log('Using enhanced retrieval query:', retrievalQuery);
-        } catch (queryError) {
-          console.error('Error generating retrieval query:', queryError);
-          // Fall back to the original query if there's an error
-          console.log('Falling back to original query:', query);
-        }
-      }
-
-      // Use the search service to search the vault with the enhanced query
-      const contextData = await this.plugin.searchService.searchVault(
-        retrievalQuery,
-        searchOptions
-      );
-
-      return contextData;
-    } catch (error: unknown) {
-      console.error('Error searching vault for context:', error);
-      new Notice(
-        `Error searching vault for context: ${error instanceof Error ? error.message : String(error)}`
-      );
-      return 'Error searching vault for context.';
-    }
-  }
 
   /**
    * Update the status indicator based on the current indexing status
@@ -623,11 +546,19 @@ class ChatView extends ItemView {
 export default class ObsidianAssistant extends Plugin {
   settings: ObsidianAssistantSettings = DEFAULT_SETTINGS;
   searchService!: SearchService;
+  private llmService!: LLMService;
   private fileReindexTimeouts: Map<string, NodeJS.Timeout> = new Map();
   private filesScheduledForReindex: Set<TFile> = new Set();
 
   async onload() {
     await this.loadSettings();
+
+    // Initialize LLM service with plugin settings based on selected service
+    const llmConfig = createLLMServiceConfig(
+      this.settings.llmServiceProvider,
+      this.settings
+    );
+    this.llmService = new LLMService(llmConfig);
 
     // Initialize search service with chunking options and embedding configuration
     const embeddingConfig = createEmbeddingConfig(
@@ -807,6 +738,154 @@ export default class ObsidianAssistant extends Plugin {
   }
 
   // Immediately reindex all files that are scheduled for reindexing
+  /**
+   * Send a message to the LLM service with context
+   * @param chatMessages The chat message history
+   * @param contextData The context data to include with the message
+   * @param streamingCallback Optional callback for streaming responses
+   * @returns The LLM response
+   */
+  async sendMessageToLLM(
+    chatMessages: ChatMessage[],
+    contextData: string,
+    streamingCallback?: (chunk: string, done: boolean) => void
+  ): Promise<string> {
+    try {
+      // Update LLM service config in case settings changed
+      const config = createLLMServiceConfig(
+        this.settings.llmServiceProvider,
+        this.settings
+      );
+      this.llmService.updateConfig(config);
+
+      // Send the message to the LLM service
+      return await this.llmService.sendMessage(
+        chatMessages,
+        contextData,
+        streamingCallback
+      );
+    } catch (error: unknown) {
+      console.error('Error sending message to LLM:', error);
+      throw error; // Re-throw to let caller handle the error
+    }
+  }
+
+  /**
+   * Cancel the current LLM request
+   */
+  cancelLLMRequest(): void {
+    this.llmService.cancelRequest();
+  }
+
+  /**
+   * Handle sending a chat message, including searching for context and getting LLM response
+   * @param userInput The user's input message
+   * @param chatMessages The current chat message history
+   * @param searchOptions Search options for context retrieval
+   * @param streamingCallback Optional callback for streaming responses
+   * @returns Object containing the full response and context data
+   */
+  async sendChatMessage(
+    userInput: string,
+    chatMessages: ChatMessage[],
+    searchOptions: SearchOptions,
+    streamingCallback?: (chunk: string, done: boolean) => void
+  ): Promise<{ response: string; contextData: string }> {
+    try {
+      // Search for relevant context in the vault
+      const contextData = await this.searchVaultForContext(userInput, chatMessages, searchOptions);
+
+      // Get response from LLM service with streaming
+      const response = await this.sendMessageToLLM(
+        chatMessages,
+        contextData,
+        streamingCallback
+      );
+
+      return { response, contextData };
+    } catch (error: unknown) {
+      console.error('Error in onSendChatMessage:', error);
+      throw error; // Re-throw to let caller handle the error
+    }
+  }
+
+  /**
+   * Search vault for context using Orama
+   * @param query The search query
+   * @param chatMessages Optional chat message history for generating enhanced retrieval queries
+   * @param searchOptions Optional search options (if not provided, will use plugin settings)
+   * @returns The context data as a string
+   */
+  async searchVaultForContext(
+    query: string, 
+    chatMessages: ChatMessage[] = [], 
+    searchOptions?: SearchOptions
+  ): Promise<string> {
+    try {
+      // If search options not provided, use plugin settings
+      if (!searchOptions) {
+        searchOptions = {
+          useCurrentNote: this.settings.useCurrentNote,
+          useVaultSearch: this.settings.useVaultSearch,
+          useVectorSearch: this.settings.useVectorSearch,
+        };
+      }
+
+      // With radio buttons, one option should always be selected
+      // But check just in case neither is selected
+      if (!searchOptions.useCurrentNote && !searchOptions.useVaultSearch) {
+        // Default to searching vault if somehow neither option is selected
+        searchOptions.useVaultSearch = true;
+        this.settings.useVaultSearch = true;
+        this.settings.useCurrentNote = false;
+        await this.saveSettings();
+      }
+
+      // If searching the vault, immediately reindex any scheduled files
+      if (searchOptions.useVaultSearch) {
+        // Process any pending reindexing operations immediately
+        await this.reindexScheduledFiles();
+      }
+
+      // Generate an enhanced retrieval query based on the full message history
+      let retrievalQuery = query;
+
+      // Only generate a retrieval query if we have chat history and are searching the vault
+      if (chatMessages.length > 0 && searchOptions.useVaultSearch) {
+        try {
+          // Update LLM service config in case settings changed
+          const config = createLLMServiceConfig(
+            this.settings.llmServiceProvider,
+            this.settings
+          );
+          this.llmService.updateConfig(config);
+
+          // Generate retrieval query based on the full message history
+          retrievalQuery = await this.llmService.generateRetrievalQuery(chatMessages);
+          console.log('Using enhanced retrieval query:', retrievalQuery);
+        } catch (queryError) {
+          console.error('Error generating retrieval query:', queryError);
+          // Fall back to the original query if there's an error
+          console.log('Falling back to original query:', query);
+        }
+      }
+
+      // Use the search service to search the vault with the enhanced query
+      const contextData = await this.searchService.searchVault(
+        retrievalQuery,
+        searchOptions
+      );
+
+      return contextData;
+    } catch (error: unknown) {
+      console.error('Error searching vault for context:', error);
+      new Notice(
+        `Error searching vault for context: ${error instanceof Error ? error.message : String(error)}`
+      );
+      return 'Error searching vault for context.';
+    }
+  }
+
   async reindexScheduledFiles(): Promise<void> {
     if (this.filesScheduledForReindex.size === 0) {
       return;
